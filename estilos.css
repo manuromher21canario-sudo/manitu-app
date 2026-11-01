@@ -13,6 +13,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Lo que está escondido, escondido de verdad (si no, "display: flex" lo vuelve a enseñar). */
+[hidden] { display: none !important; }
 body {
   margin: 0;
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

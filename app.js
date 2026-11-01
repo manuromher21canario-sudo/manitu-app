@@ -134,6 +134,8 @@
   }
 
   let temporizador = null;
+  // Al cambiar de sección se quita el aviso: si no, tapa la pantalla nueva.
+  function quitarAviso() { clearTimeout(temporizador); document.getElementById('aviso').hidden = true; }
   function avisar(texto, conDeshacer) {
     const caja = document.getElementById('aviso');
     caja.innerHTML = '<span>' + esc(texto) + '</span>' + (conDeshacer && pilaDeshacer.length ? '<button data-accion="deshacer">Deshacer</button>' : '');
@@ -517,13 +519,14 @@
     menu.hidden = vista.pantalla === 'alta';
     const seccion = { trabajo: 'trabajos', cerrar: 'trabajos', papel: 'trabajos', nuevo: 'trabajos' }[vista.pantalla] || vista.pantalla;
     menu.querySelectorAll('button').forEach((b) => b.classList.toggle('activo', b.dataset.valor === seccion));
-    window.scrollTo && vista.pantalla !== 'ayudante' && window.scrollTo(0, 0);
+    // En el chat se baja al último mensaje, como en cualquier chat; en lo demás, se empieza arriba.
+    if (window.scrollTo) window.scrollTo(0, vista.pantalla === 'ayudante' ? document.body.scrollHeight : 0);
   }
 
   function ir(pantalla, extra) { vista = Object.assign({ pantalla: pantalla }, extra || {}); pintar(); }
 
   const acciones = {
-    ir: (v) => ir(v, vista.id && (v === 'cerrar') ? { id: vista.id } : {}),
+    ir: (v) => { quitarAviso(); ir(v, vista.id && (v === 'cerrar') ? { id: vista.id } : {}); },
     abrir: (v) => ir('trabajo', { id: Number(v) }),
     deshacer: () => deshacer(),
     formulario: (v) => { vista.formulario = vista.formulario === v ? null : v; pintar(); },

@@ -67,6 +67,12 @@ async function main() {
 
   // Hace scroll con la rueda, a tirones pequeños, hasta que el elemento esté a la vista.
   async function llevarALaVista(loc) {
+    // Lo que está fijo en la pantalla (el menú de abajo, el aviso) no se mueve con el scroll: se toca y ya.
+    const fijo = await loc.evaluate((el) => {
+      for (let e = el; e; e = e.parentElement) if (getComputedStyle(e).position === 'fixed') return true;
+      return false;
+    });
+    if (fijo) return loc.boundingBox();
     for (let intento = 0; intento < 40; intento++) {
       const caja = await loc.boundingBox();
       if (!caja) throw new Error('No se ve en la página');
@@ -121,6 +127,19 @@ async function main() {
     await pausa(page);
   }
   const texto = () => page.locator('#app').innerText();
+  // ¿Se ve entero en la pantalla, sin que nada lo tape? (sin hacer scroll: lo que ve la persona ahora mismo)
+  async function seVeSinTapar(loc) {
+    loc = loc.last();
+    const caja = await loc.boundingBox();
+    if (!caja || caja.y < 0 || caja.y + caja.height > page.viewportSize().height) return false;
+    const puntos = [[0.5, 0.15], [0.5, 0.85], [0.1, 0.5], [0.9, 0.5]];
+    for (const [fx, fy] of puntos) {
+      const ok = await loc.evaluate((el, p) => { const a = document.elementFromPoint(p.x, p.y); return el === a || el.contains(a); },
+        { x: caja.x + caja.width * fx, y: caja.y + caja.height * fy });
+      if (!ok) return false;
+    }
+    return true;
+  }
   // Mira la pantalla de arriba abajo con la rueda, como quien lee.
   async function leerPantalla() {
     const altoPagina = await page.evaluate(() => document.body.scrollHeight);
@@ -170,6 +189,7 @@ async function main() {
 
   console.log('Terminar (el botón está abajo: hay que bajar con scroll)');
   await tocarBoton('Terminar el trabajo');
+  comprobar('al entrar en Terminar no hay ningún aviso tapando', await page.locator('#aviso').isHidden());
   comprobar('gasolina 2,25 €', (await texto()).includes('2,25 €'));
   await escribir('#pensaba', '50');
   comprobar('pensando 50 € le avisa: 8,88 €/h', (await page.locator('#comparar').innerText()).includes('8,88 € por hora'));
@@ -189,6 +209,9 @@ async function main() {
   await tocarBoton('Un viaje');
   comprobar('recuerda los km de Ana', (await texto()).includes('Igual que la última vez: 20 km'));
   await tocarBoton('Igual que la última vez: 20 km');
+  await page.waitForTimeout(300);
+  comprobar('el chat baja solo y la última respuesta se ve entera', await seVeSinTapar(page.locator('.burbuja.bot')));
+  comprobar('y el botón para seguir también se ve', await seVeSinTapar(boton('Apuntar otra cosa')));
   await foto('ayudante');
 
   console.log('Deshacer (el aviso de abajo)');
