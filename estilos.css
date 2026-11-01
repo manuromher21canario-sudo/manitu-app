@@ -45,6 +45,10 @@ p { margin: 6px 0; }
 .ojo { background: var(--rojo-claro); color: var(--rojo); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
 .bien { background: var(--verde-claro); color: var(--verde-oscuro); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
 
+/* Pasos de "Cómo funciona" */
+.pasos { padding-left: 22px; margin: 6px 0; }
+.pasos li { margin: 8px 0; }
+
 /* Botones */
 button { font: inherit; cursor: pointer; }
 .boton {
@@ -54,6 +58,8 @@ button { font: inherit; cursor: pointer; }
   background: var(--blanco); color: var(--verde); font-weight: 600;
 }
 .boton.principal { background: var(--verde); color: var(--blanco); }
+.boton.abierto { background: var(--verde-claro); }
+a.boton { text-align: center; text-decoration: none; }
 .boton.peligro { border-color: var(--rojo); color: var(--rojo); }
 .fila { display: flex; gap: 8px; }
 .fila > * { flex: 1; }

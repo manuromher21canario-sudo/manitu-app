@@ -41,6 +41,7 @@
     if (vista.id && !buscarTrabajo(vista.id)) vista = { pantalla: datos.perfil ? 'inicio' : 'alta' };
     if (!datos.perfil) vista = { pantalla: 'alta' };
     else if (vista.pantalla === 'alta') vista = { pantalla: 'inicio' };
+    if (chat && vista.pantalla === 'ayudante') { decir('Deshecho: lo último ya no está apuntado. ¿Qué quieres apuntar?'); alMenu(); }
     avisar('Deshecho', false);
     pintar();
   }
@@ -170,6 +171,13 @@
       const enMarcha = abiertos();
       html += '<h2>En marcha</h2>';
       html += enMarcha.length ? listaTrabajos(enMarcha) : '<p class="suave">No tienes trabajos en marcha.</p>';
+      if (!datos.trabajos.length) {
+        html += '<h2>Cómo funciona</h2><ol class="pasos">' +
+          '<li>Cuando te encarguen algo, pulsa <strong>Nuevo trabajo</strong>.</li>' +
+          '<li>Mientras trabajas, apunta los <strong>tickets</strong>, las <strong>horas</strong> y los <strong>viajes</strong>. También te lo puede ir preguntando el <strong>Ayudante</strong>.</li>' +
+          '<li>Al terminar, Manitu te dice el <strong>precio justo</strong> y te prepara el papel para mandárselo al cliente por WhatsApp.</li>' +
+          '</ol><p class="suave">¿Tienes los tickets de un trabajo que ya hiciste? Apúntalo y verás si cobraste lo justo.</p>';
+      }
       return html;
     },
 
@@ -210,7 +218,8 @@
         return html;
       }
 
-      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket') + boton('Horas', 'formulario', 'horas') + boton('Viaje', 'formulario', 'viaje') + '</div>';
+      const marcar = (f) => (vista.formulario === f ? 'abierto' : '');
+      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket', marcar('ticket')) + boton('Horas', 'formulario', 'horas', marcar('horas')) + boton('Viaje', 'formulario', 'viaje', marcar('viaje')) + '</div>';
       if (vista.formulario === 'ticket') {
         html += '<form data-form="ticket" class="caja"><label for="importe">¿Cuánto pone el ticket?</label>' +
           '<input id="importe" name="importe" inputmode="decimal" required placeholder="30,50">' +
@@ -267,28 +276,22 @@
 
     papel: function () {
       const t = buscarTrabajo(vista.id);
-      const p = t.cierre.ajustes;
-      const c = C.calcular(t, p, t.cierre.con_descuento);
-      const ajuste = C.redondear(Number(t.cierre.cobrado) - c.total);
-      let filas = '';
-      c.tickets.forEach((a) => { filas += '<tr><td>Material' + (a.cosa ? ': ' + esc(a.cosa) : '') + '</td><td>' + C.euros(a.cantidad) + '</td></tr>'; });
-      if (c.gestion) filas += '<tr><td>Gestión del material (compra y transporte)</td><td>' + C.euros(c.gestion) + '</td></tr>';
-      // Las horas no salen en el papel: el cliente paga el trabajo, no lo que se tardó.
-      if (c.mano_obra) filas += '<tr><td>Mano de obra</td><td>' + C.euros(c.mano_obra) + '</td></tr>';
-      if (c.desplazamiento) filas += '<tr><td>Desplazamiento</td><td>' + C.euros(c.desplazamiento) + '</td></tr>';
-      if (c.descuento) filas += '<tr><td>Descuento por ser cliente de siempre</td><td>−' + C.euros(c.descuento) + '</td></tr>';
-      if (ajuste) filas += '<tr><td>' + (ajuste < 0 ? 'Rebaja' : 'Suplemento') + '</td><td>' + (ajuste < 0 ? '−' : '') + C.euros(Math.abs(ajuste)) + '</td></tr>';
-      filas += '<tr class="total"><td>Total</td><td>' + C.euros(t.cierre.cobrado) + '</td></tr>';
+      const filas = lineasPapel(t).map((l) =>
+        '<tr' + (l.total ? ' class="total"' : '') + '><td>' + esc(l.texto) + '</td><td>' + (l.resta ? '−' : '') + C.euros(l.importe) + '</td></tr>').join('');
+      const whatsapp = 'https://wa.me/?text=' + encodeURIComponent(textoPapel(t));
       return '<div class="papel"><div class="membrete"><div><h1>' + esc(datos.perfil.nombre) + '</h1>' +
-        '<p class="suave">' + esc((C.REFERENCIAS[datos.perfil.oficio] || {}).nombre || '') + '</p></div><img src="iconos/manitu-icono.svg" alt=""></div>' +
+        '<p class="suave">' + esc(nombreOficio()) + '</p></div><img src="iconos/manitu-icono.svg" alt=""></div>' +
         '<p><strong>Para:</strong> ' + esc(t.cliente) + '</p><p><strong>Trabajo:</strong> ' + esc(t.que) + '</p><p><strong>Fecha:</strong> ' + fecha(t.cierre.fecha) + '</p>' +
         '<table class="cuentas" style="margin-top:16px">' + filas + '</table>' +
         '<p class="pie">Esto no es una factura. Hecho con Manitu.</p></div>' +
-        '<div class="no-imprimir">' + boton('Imprimir o guardar en PDF', 'imprimir', null, 'principal') + boton('Volver', 'abrir', t.id) + '</div>';
+        '<div class="no-imprimir">' +
+        '<a class="boton principal" id="enviar-whatsapp" href="' + whatsapp + '" target="_blank" rel="noopener">Enviar por WhatsApp</a>' +
+        (navigator.share ? boton('Compartir de otra forma', 'compartir', t.id) : '') +
+        boton('Imprimir o guardar en PDF', 'imprimir') + boton('Volver', 'abrir', t.id) + '</div>';
     },
 
     ayudante: function () {
-      const ch = vista.chat;
+      const ch = chat;
       let html = '<h1>Ayudante</h1><div class="chat">' +
         ch.mensajes.map((m) => '<div class="burbuja ' + m.de + '">' + esc(m.texto) + '</div>').join('') + '</div>';
       const paso = PASOS[ch.paso];
@@ -296,11 +299,10 @@
       if (opciones.length) {
         html += '<div class="opciones">' + opciones.map((o) => '<button class="boton" data-accion="chat-opcion" data-valor="' + esc(o.valor) + '">' + esc(o.texto) + '</button>').join('') + '</div>';
       }
-      if (paso.escribir) {
-        html += '<form data-form="chat" class="fila" style="margin-top:12px"><input name="texto" autocomplete="off" required ' +
-          (paso.numero ? 'inputmode="decimal" ' : '') + 'placeholder="' + esc(paso.escribir) + '">' +
-          '<button class="boton principal" type="submit" style="margin:0;flex:0 0 auto;width:auto">Enviar</button></form>';
-      }
+      // Siempre se puede escribir, también al principio.
+      html += '<form data-form="chat" class="fila" style="margin-top:12px"><input name="texto" autocomplete="off" required aria-label="Escribe aquí" ' +
+        (paso.numero ? 'inputmode="decimal" ' : '') + 'placeholder="' + esc(paso.escribir || 'Escribe aquí') + '">' +
+        '<button class="boton principal" type="submit" style="margin:0;flex:0 0 auto;width:auto">Enviar</button></form>';
       return html;
     },
 
@@ -345,6 +347,32 @@
       '<button class="boton principal" type="submit">' + textoBoton + '</button></form>';
   }
 
+  function nombreOficio() { return (C.REFERENCIAS[datos.perfil.oficio] || {}).nombre || ''; }
+
+  // Las líneas del papel para el cliente. Las horas, los km y la gasolina NO salen:
+  // el cliente paga el trabajo, no lo que se tardó.
+  function lineasPapel(t) {
+    const c = C.calcular(t, t.cierre.ajustes, t.cierre.con_descuento);
+    const ajuste = C.redondear(Number(t.cierre.cobrado) - c.total);
+    const l = [];
+    c.tickets.forEach((a) => l.push({ texto: 'Material' + (a.cosa ? ': ' + a.cosa : ''), importe: a.cantidad }));
+    if (c.gestion) l.push({ texto: 'Gestión del material (compra y transporte)', importe: c.gestion });
+    if (c.mano_obra) l.push({ texto: 'Mano de obra', importe: c.mano_obra });
+    if (c.desplazamiento) l.push({ texto: 'Desplazamiento', importe: c.desplazamiento });
+    if (c.descuento) l.push({ texto: 'Descuento por ser cliente de siempre', importe: c.descuento, resta: true });
+    if (ajuste) l.push({ texto: ajuste < 0 ? 'Rebaja' : 'Suplemento', importe: Math.abs(ajuste), resta: ajuste < 0 });
+    l.push({ texto: 'Total', importe: t.cierre.cobrado, total: true });
+    return l;
+  }
+
+  // El mismo papel en texto, para mandarlo por WhatsApp.
+  function textoPapel(t) {
+    const lineas = lineasPapel(t).map((l) => (l.total ? '*' : '') + l.texto + ': ' + (l.resta ? '−' : '') + C.euros(l.importe) + (l.total ? '*' : ''));
+    return datos.perfil.nombre + (nombreOficio() ? ' · ' + nombreOficio() : '') + '\n' +
+      'Para: ' + t.cliente + '\nTrabajo: ' + t.que + '\nFecha: ' + fecha(t.cierre.fecha) + '\n\n' +
+      lineas.join('\n') + '\n\nEsto no es una factura. Hecho con Manitu.';
+  }
+
   function listaTrabajos(lista) {
     return '<ul class="lista">' + lista.map((t) => {
       const derecha = t.estado === 'cerrado' ? C.euros(t.cierre.cobrado) : 'Hasta ahora ' + C.euros(C.calcular(t, datos.perfil, false).justo);
@@ -378,83 +406,177 @@
     return '<div class="bien">' + texto + '</div>';
   }
 
-  // ---------- El ayudante: un chat de preguntas fijas, sin IA (gratis) ----------
+  // ---------- El ayudante: un chat sin IA (gratis) ----------
+  // Se puede pulsar botones o escribir como se habla: «30 € de tubos», «2 horas», «viaje de 20 km»…
+  // Entiende buscando números y palabras clave. La conversación se guarda mientras la app esté abierta.
 
-  function decir(texto) { vista.chat.mensajes.push({ de: 'bot', texto: texto }); }
-  function yoDigo(texto) { vista.chat.mensajes.push({ de: 'yo', texto: texto }); }
-  function irPaso(paso) { vista.chat.paso = paso; if (PASOS[paso].pregunta) decir(PASOS[paso].pregunta(vista.chat.datos)); }
+  let chat = null;
+  const AYUDA = 'Puedes pulsar un botón o escribirlo, por ejemplo: «30 € de tubos», «2 horas», «media hora», «viaje de 20 km» o «nuevo trabajo».';
 
-  function opcionesTrabajo() { return abiertos().map((t) => ({ texto: t.cliente + ' · ' + t.que, valor: t.id })); }
+  function chatNuevo() {
+    return { mensajes: [{ de: 'bot', texto: 'Hola, ' + datos.perfil.nombre + '. ¿Qué quieres apuntar? ' + AYUDA }], paso: 'menu', datos: {} };
+  }
+  function decir(texto) { chat.mensajes.push({ de: 'bot', texto: texto }); }
+  function yoDigo(texto) { chat.mensajes.push({ de: 'yo', texto: texto }); }
+  function irPaso(paso) { chat.paso = paso; if (PASOS[paso].pregunta) decir(PASOS[paso].pregunta(chat.datos)); }
+  function alMenu() { chat.paso = 'menu'; chat.datos = {}; }
+  const n2t = (n) => String(n).replace('.', ',');
 
-  // Después de elegir qué apuntar: si hay un solo trabajo en marcha lo usa; si hay varios, pregunta.
-  function elegirTrabajoPara(que) {
-    const ch = vista.chat;
-    ch.datos = { que: que };
+  // Quita mayúsculas y tildes para comparar: "Más" y "mas" son lo mismo.
+  function normal(t) { return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+
+  // Lee lo escrito y dice qué quiere hacer. Devuelve null si no lo entiende.
+  function entender(texto) {
+    const t = normal(texto);
+    const NUM = '(\\d+(?:[.,]\\d+)?)';
+    const num = (m) => C.leerNumero(m);
+    let m;
+    if (/\b(cancelar|cancela|nada|dejalo|olvidalo|salir)\b/.test(t)) return { que: 'cancelar' };
+    if ((m = t.match(new RegExp(NUM + '\\s*(km|kms|kilometros?)\\b')))) return { que: 'viaje', km: num(m[1]) };
+    if (/\bmedia hora\b/.test(t)) return { que: 'horas', horas: 0.5 };
+    if ((m = t.match(new RegExp(NUM + '\\s*(h|hs|hora|horas)\\b')))) return { que: 'horas', horas: num(m[1]) };
+    if ((m = t.match(new RegExp(NUM + '\\s*(€|e|eur|euros?)(?=\\s|$|[.,])'))) || (m = t.match(new RegExp('€\\s*' + NUM)))) {
+      // Lo que no es el importe es "qué es": «30 € de tubos» → tubos
+      const cosa = String(texto).replace(/\d+(?:[.,]\d+)?\s*(€|euros?|eur|e)?/i, '').replace(/€/g, '')
+        .replace(/^\s*(de|del|en|ticket|un ticket|:|-)\s+/i, '').replace(/^\s*(de|del|en)\s+/i, '').trim();
+      return { que: 'ticket', importe: num(m[1]), cosa: cosa };
+    }
+    // Primero lo que lleva número (arriba); luego las palabras sueltas, así «30 € de grifo nuevo» es un ticket.
+    if (/(como voy|este mes|cuanto (he |llevo )?(ganado|cobrado|llevo))/.test(t)) return { que: 'mes' };
+    if (/\b(terminar|termine|terminado|acabar|acabe|acabado|cerrar)\b/.test(t)) return { que: 'terminar' };
+    if (/\b(nuevo|nueva|empezar|empiezo|otro trabajo)\b/.test(t)) return { que: 'nuevo' };
+    if (/\b(viaje|viajes|fui|ida y vuelta|desplazamiento)\b/.test(t)) return { que: 'viaje' };
+    if (/\b(ticket|tickets|factura|compre|compra|material)\b/.test(t)) return { que: 'ticket' };
+    if (/\bhoras?\b/.test(t)) return { que: 'horas' };
+    if ((m = t.match(new RegExp('^' + NUM + '$')))) return { que: 'numero', numero: num(m[1]) };
+    return null;
+  }
+
+  function hacer(intencion) {
+    if (!intencion) return decir('No te he entendido. ' + AYUDA);
+    const q = intencion.que;
+    if (q === 'cancelar') { decir('Vale, lo dejamos. ¿Qué quieres apuntar?'); return alMenu(); }
+    if (q === 'mes') {
+      const m = resumenMes();
+      decir('Este mes has cobrado ' + C.euros(m.cobrado) + ' en ' + m.trabajos + (m.trabajos === 1 ? ' trabajo' : ' trabajos') + '.' +
+        (m.por_hora != null ? ' Te han quedado ' + C.euros(m.por_hora) + ' por hora.' : '') + ' ¿Algo más?');
+      return alMenu();
+    }
+    if (q === 'nuevo') { chat.datos = {}; return irPaso('cliente'); }
+    if (q === 'numero') { chat.datos = { numero: intencion.numero }; return irPaso('numero'); }
+    elegirTrabajoPara(intencion);
+  }
+
+  // Si hay un solo trabajo en marcha lo usa; si hay varios, pregunta; si no hay, empieza uno.
+  function elegirTrabajoPara(intencion) {
+    chat.datos = Object.assign({}, intencion);
     const lista = abiertos();
-    if (!lista.length) { decir('No tienes ningún trabajo en marcha. Empecemos uno.'); return irPaso('cliente'); }
-    if (lista.length === 1) { ch.datos.id = lista[0].id; decir('Para el trabajo de ' + lista[0].cliente + '.'); return seguirCon(que); }
+    if (!lista.length) {
+      if (intencion.que === 'terminar') { decir('No tienes ningún trabajo en marcha. ¿Qué quieres apuntar?'); return alMenu(); }
+      decir('No tienes ningún trabajo en marcha. Empecemos uno.');
+      return irPaso('cliente');
+    }
+    if (lista.length === 1) { chat.datos.id = lista[0].id; decir('Para el trabajo de ' + lista[0].cliente + '.'); return seguir(); }
     irPaso('cual');
   }
 
-  function seguirCon(que) {
-    if (que === 'ticket') return irPaso('importe');
-    if (que === 'horas') return irPaso('horas');
-    irPaso('km');
+  // El trabajo de la conversación. Si ya no existe (por un Deshacer, por ejemplo), lo dice y vuelve a empezar.
+  function trabajoDelChat() {
+    const t = buscarTrabajo(chat.datos.id);
+    if (!t || t.estado !== 'abierto') { decir('Ese trabajo ya no está en marcha. ¿Qué quieres apuntar?'); alMenu(); return null; }
+    return t;
+  }
+
+  function seguir() {
+    const d = chat.datos;
+    if (!trabajoDelChat()) return;
+    if (d.que === 'terminar') { const id = d.id; alMenu(); return ir('cerrar', { id: id }); }
+    if (d.que === 'ticket') return d.importe != null ? (d.cosa ? guardarTicket(d.cosa) : irPaso('cosa')) : irPaso('importe');
+    if (d.que === 'horas') return d.horas != null ? guardarHoras(d.horas) : irPaso('horas');
+    return d.km != null ? guardarViaje(d.km) : irPaso('km');
+  }
+
+  function guardarTicket(cosa) {
+    const t = trabajoDelChat(); if (!t) return;
+    const importe = chat.datos.importe;
+    cambiar('Ticket apuntado', () => apuntar(t, 'ticket', importe, cosa.trim()));
+    decir('Apuntado: ' + C.euros(importe) + (cosa.trim() ? ' de ' + cosa.trim() : '') + ' en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    alMenu();
+  }
+
+  function guardarHoras(n) {
+    const t = trabajoDelChat(); if (!t) return;
+    cambiar('Horas apuntadas', () => apuntar(t, 'horas', n));
+    decir('Apuntadas ' + n2t(n) + ' h en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    alMenu();
   }
 
   function guardarViaje(km) {
-    const t = buscarTrabajo(vista.chat.datos.id);
+    const t = trabajoDelChat(); if (!t) return;
     apuntarViaje(t, km);
-    decir('Apuntado un viaje de ' + String(km).replace('.', ',') + ' km en el trabajo de ' + t.cliente + ' (unos ' + C.euros(C.gasolinaViaje(km, datos.perfil)) + ' de gasolina). Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '.');
-    irPaso('otra');
+    decir('Apuntado un viaje de ' + n2t(km) + ' km en el trabajo de ' + t.cliente + ' (unos ' + C.euros(C.gasolinaViaje(km, datos.perfil)) + ' de gasolina). Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    alMenu();
   }
 
+  const CANCELAR = { texto: 'Cancelar', valor: '__cancelar' };
   const MENU = [
     { texto: 'Un ticket', valor: 'ticket' }, { texto: 'Horas', valor: 'horas' },
     { texto: 'Un viaje', valor: 'viaje' }, { texto: 'Un trabajo nuevo', valor: 'nuevo' },
-    { texto: 'Cómo voy este mes', valor: 'mes' }
+    { texto: 'Terminar un trabajo', valor: 'terminar' }, { texto: 'Cómo voy este mes', valor: 'mes' }
   ];
 
+  // Cada paso: la pregunta, los botones, y qué hacer si se pulsa (elegir) o se escribe (escrito).
+  // Si un paso no tiene "escrito", lo escrito se intenta entender como una orden nueva.
   const PASOS = {
     menu: {
       opciones: () => MENU,
-      elegir: function (v) {
-        if (v === 'nuevo') return irPaso('cliente');
-        if (v === 'mes') {
-          const m = resumenMes();
-          decir('Este mes has cobrado ' + C.euros(m.cobrado) + ' en ' + m.trabajos + (m.trabajos === 1 ? ' trabajo' : ' trabajos') + '.' +
-            (m.por_hora != null ? ' Te han quedado ' + C.euros(m.por_hora) + ' por hora.' : ''));
-          return irPaso('otra');
-        }
-        elegirTrabajoPara(v);
-      }
+      elegir: (v) => hacer({ que: v })
     },
     cual: {
-      pregunta: () => '¿Para qué trabajo?',
-      opciones: opcionesTrabajo,
-      elegir: function (v) { vista.chat.datos.id = Number(v); seguirCon(vista.chat.datos.que); }
+      pregunta: () => '¿Para qué trabajo?', escribir: 'Escribe el cliente',
+      opciones: () => abiertos().map((t) => ({ texto: t.cliente + ' · ' + t.que, valor: t.id })).concat([CANCELAR]),
+      elegir: (v) => { chat.datos.id = Number(v); seguir(); },
+      escrito: function (texto) {
+        const b = normal(texto);
+        const hay = abiertos().filter((t) => normal(t.cliente).includes(b) || normal(t.que).includes(b));
+        if (hay.length === 1) { chat.datos.id = hay[0].id; decir('Para el trabajo de ' + hay[0].cliente + '.'); return seguir(); }
+        decir(hay.length ? 'Hay varios con ese nombre. Pulsa el que es.' : 'No encuentro ese trabajo. Pulsa el que es.');
+      }
+    },
+    numero: {
+      pregunta: (d) => '¿Qué es ese ' + n2t(d.numero) + '?',
+      opciones: () => [{ texto: 'Euros de un ticket', valor: 'ticket' }, { texto: 'Horas', valor: 'horas' }, { texto: 'Km de un viaje', valor: 'viaje' }, CANCELAR],
+      elegir: (v) => {
+        const n = chat.datos.numero;
+        if (v === 'horas' && n > 24) { decir('Son demasiadas horas para un día. ¿Qué quieres apuntar?'); return alMenu(); }
+        hacer({ que: v, importe: v === 'ticket' ? n : undefined, horas: v === 'horas' ? n : undefined, km: v === 'viaje' ? n : undefined });
+      }
     },
     importe: {
       pregunta: () => '¿Cuánto pone el ticket?', escribir: '30,50', numero: true,
+      opciones: () => [CANCELAR],
       escrito: function (texto) {
-        const n = C.leerNumero(texto);
+        const i = entender(texto);
+        const n = i && i.que === 'ticket' && i.importe != null ? i.importe : C.leerNumero(texto);
         if (n == null || n === 0) return decir('No lo entiendo. Escribe solo el número, por ejemplo 30,50.');
-        vista.chat.datos.importe = n;
+        chat.datos.importe = n;
+        if (i && i.cosa) return guardarTicket(i.cosa);
         irPaso('cosa');
       }
     },
     cosa: {
       pregunta: () => '¿Qué es? Por ejemplo: grifo, tubos, pintura.', escribir: 'Grifo',
-      opciones: () => [{ texto: 'Saltar', valor: '' }],
-      elegir: function () { guardarTicket(''); },
-      escrito: function (texto) { guardarTicket(texto); }
+      opciones: () => [{ texto: 'Saltar', valor: '' }, CANCELAR],
+      elegir: () => guardarTicket(''),
+      escrito: (texto) => guardarTicket(texto)
     },
     horas: {
       pregunta: () => '¿Cuántas horas has trabajado?', escribir: 'Otra cantidad', numero: true,
-      opciones: () => [0.5, 1, 2, 4, 8].map((h) => ({ texto: String(h).replace('.', ',') + ' h', valor: h })),
-      elegir: function (v) { guardarHoras(Number(v)); },
+      opciones: () => [0.5, 1, 2, 4, 8].map((h) => ({ texto: n2t(h) + ' h', valor: h })).concat([CANCELAR]),
+      elegir: (v) => guardarHoras(Number(v)),
       escrito: function (texto) {
-        const n = C.leerNumero(texto);
+        const i = entender(texto);
+        const n = i && i.horas != null ? i.horas : C.leerNumero(texto);
         if (n == null || n === 0 || n > 24) return decir('No lo entiendo. Escribe las horas, por ejemplo 3,5.');
         guardarHoras(n);
       }
@@ -462,58 +584,64 @@
     km: {
       pregunta: () => '¿Cuántos km son, ida y vuelta?', escribir: 'Km', numero: true,
       opciones: (d) => {
-        const ultima = kmDeCliente(buscarTrabajo(d.id).cliente);
-        return ultima != null ? [{ texto: 'Igual que la última vez: ' + String(ultima).replace('.', ',') + ' km', valor: ultima }] : [];
+        const t = buscarTrabajo(d.id);
+        const ultima = t ? kmDeCliente(t.cliente) : null;
+        return (ultima != null ? [{ texto: 'Igual que la última vez: ' + n2t(ultima) + ' km', valor: ultima }] : []).concat([CANCELAR]);
       },
-      elegir: function (v) { guardarViaje(Number(v)); },
+      elegir: (v) => guardarViaje(Number(v)),
       escrito: function (texto) {
-        const n = C.leerNumero(texto);
+        const i = entender(texto);
+        const n = i && i.km != null ? i.km : C.leerNumero(texto);
         if (n == null || n > 1000) return decir('No lo entiendo. Escribe solo los km, por ejemplo 20.');
         guardarViaje(n);
       }
     },
     cliente: {
-      pregunta: () => '¿Para quién es el trabajo?', escribir: 'Ana Pérez',
-      escrito: function (texto) { vista.chat.datos.cliente = texto.trim(); irPaso('que'); }
+      pregunta: () => '¿Para quién es el trabajo?' + (clientes().length ? ' Escríbelo o pulsa uno de tus clientes.' : ''), escribir: 'Ana Pérez',
+      opciones: () => clientes().slice(0, 4).map((c) => ({ texto: c, valor: c })).concat([CANCELAR]),
+      elegir: (v) => { chat.datos.cliente = v; irPaso('que'); },
+      escrito: (texto) => { chat.datos.cliente = texto.trim(); irPaso('que'); }
     },
     que: {
       pregunta: () => '¿Qué vas a hacer?', escribir: 'Cambiar el grifo',
+      opciones: () => [CANCELAR],
       escrito: function (texto) {
         let t;
-        cambiar('Trabajo empezado', () => { t = crearTrabajo(vista.chat.datos.cliente, texto); });
+        cambiar('Trabajo empezado', () => { t = crearTrabajo(chat.datos.cliente, texto); });
         const antes = trabajosAntes(t);
         decir('Empezado el trabajo de ' + t.cliente + '.' + (antes ? ' Es cliente de siempre: ' + antes + (antes === 1 ? ' trabajo' : ' trabajos') + ' antes de este.' : ''));
-        irPaso('otra');
+        // Si venía a apuntar algo (un ticket, horas…), sigue con eso.
+        const pendiente = chat.datos;
+        if (['ticket', 'horas', 'viaje'].includes(pendiente.que)) { pendiente.id = t.id; return seguir(); }
+        decir('¿Qué quieres apuntar?');
+        alMenu();
       }
-    },
-    otra: {
-      opciones: () => [{ texto: 'Apuntar otra cosa', valor: 'menu' }],
-      elegir: function () { irPaso('menu'); decir('¿Qué quieres apuntar?'); }
     }
   };
 
-  function guardarTicket(cosa) {
-    const t = buscarTrabajo(vista.chat.datos.id);
-    const importe = vista.chat.datos.importe;
-    cambiar('Ticket apuntado', () => apuntar(t, 'ticket', importe, cosa.trim()));
-    decir('Apuntado: ' + C.euros(importe) + (cosa.trim() ? ' de ' + cosa.trim() : '') + ' en el trabajo de ' + t.cliente + '.');
-    irPaso('otra');
+  // Lo escrito en el chat: si el paso espera algo concreto, lo usa; si no, lo intenta entender.
+  function chatEscrito(texto) {
+    yoDigo(texto);
+    const paso = PASOS[chat.paso];
+    const i = entender(texto);
+    if (i && i.que === 'cancelar') return hacer(i);
+    if (paso.escrito) return paso.escrito(texto);
+    hacer(i);
   }
 
-  function guardarHoras(n) {
-    const t = buscarTrabajo(vista.chat.datos.id);
-    cambiar('Horas apuntadas', () => apuntar(t, 'horas', n));
-    decir('Apuntadas ' + String(n).replace('.', ',') + ' h en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '.');
-    irPaso('otra');
+  function chatOpcion(v) {
+    const paso = PASOS[chat.paso];
+    const op = (paso.opciones(chat.datos) || []).find((o) => String(o.valor) === v);
+    if (op) yoDigo(op.texto);
+    if (v === '__cancelar') return hacer({ que: 'cancelar' });
+    paso.elegir(v);
   }
-
-  function chatNuevo() { return { mensajes: [{ de: 'bot', texto: 'Hola, ' + datos.perfil.nombre + '. ¿Qué quieres apuntar?' }], paso: 'menu', datos: {} }; }
 
   // ---------- Pintar y responder a los toques ----------
 
   function pintar() {
     if (vista.pantalla !== 'alta' && !datos.perfil) vista = { pantalla: 'alta' };
-    if (vista.pantalla === 'ayudante' && !vista.chat) vista.chat = chatNuevo();
+    if (vista.pantalla === 'ayudante' && !chat) chat = chatNuevo();
     document.getElementById('app').innerHTML = pantallas[vista.pantalla]();
     const menu = document.getElementById('menu');
     menu.hidden = vista.pantalla === 'alta';
@@ -542,13 +670,8 @@
     reabrir: (v) => { cambiar('Trabajo reabierto', () => { const t = buscarTrabajo(v); t.estado = 'abierto'; t.cierre = null; }); pintar(); },
     papel: (v) => ir('papel', { id: Number(v) }),
     imprimir: () => window.print(),
-    'chat-opcion': (v) => {
-      const ch = vista.chat;
-      const op = (PASOS[ch.paso].opciones(ch.datos) || []).find((o) => String(o.valor) === v);
-      if (op) yoDigo(op.texto);
-      PASOS[ch.paso].elegir(v);
-      pintar();
-    },
+    compartir: (v) => { navigator.share({ title: 'Manitu', text: textoPapel(buscarTrabajo(v)) }).catch(() => {}); },
+    'chat-opcion': (v) => { chatOpcion(v); if (vista.pantalla === 'ayudante') pintar(); },
     copia: () => {
       const enlace = document.createElement('a');
       enlace.href = URL.createObjectURL(new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' }));
@@ -557,7 +680,7 @@
     },
     'pedir-borrar': () => { vista.confirmar_borrar = true; pintar(); },
     'no-borrar': () => { vista.confirmar_borrar = false; pintar(); },
-    'borrar-todo': () => { cambiar('Todo borrado', () => { datos = datosVacios(); }); ir('alta'); }
+    'borrar-todo': () => { cambiar('Todo borrado', () => { datos = datosVacios(); }); chat = null; ir('alta'); }
   };
 
   document.addEventListener('click', (e) => {
@@ -671,8 +794,8 @@
     if (tipo === 'chat') {
       const texto = (f.texto || '').trim();
       if (!texto) return;
-      yoDigo(texto);
-      PASOS[vista.chat.paso].escrito(texto);
+      chatEscrito(texto);
+      if (vista.pantalla !== 'ayudante') return;
       pintar();
       const campo = document.querySelector('[data-form="chat"] input');
       if (campo) campo.focus();
@@ -680,4 +803,7 @@
   });
 
   pintar();
+
+  // Guarda una copia de la app en el móvil para que abra también sin internet (sw.js).
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

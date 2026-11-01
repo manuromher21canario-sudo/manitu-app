@@ -8,8 +8,9 @@ const aqui = __dirname;
 const leer = (f) => fs.readFileSync(path.join(aqui, f), 'utf8');
 // Metemos los scripts dentro del HTML para que funcionen sin servidor.
 const html = leer('index.html')
-  .replace('<script src="cuentas.js"></script>', '<script>' + leer('cuentas.js') + '</script>')
-  .replace('<script src="app.js"></script>', '<script>' + leer('app.js') + '</script>');
+  // Con función, para que símbolos del código como "$'" no se tomen como órdenes de reemplazo.
+  .replace('<script src="cuentas.js"></script>', () => '<script>' + leer('cuentas.js') + '</script>')
+  .replace('<script src="app.js"></script>', () => '<script>' + leer('app.js') + '</script>');
 
 // Callamos el aviso de "scroll no disponible": el robot no tiene pantalla.
 const consola = new VirtualConsole();
@@ -63,6 +64,7 @@ comprobar('al elegir furgoneta propone 7,5 litros', $('#consumo').value === '7,5
 rellenar({ nombre: 'Juan', precio_hora: '25', precio_viaje: '12', margen: '10', descuento_fiel: '0.1', combustible: 'gasolina', precio_litro: '1,50' });
 enviar('perfil');
 comprobar('llega al inicio con su nombre', texto().includes('Juan') && texto().includes('Este mes has cobrado'));
+comprobar('la primera vez explica cómo funciona', texto().includes('Cómo funciona'));
 
 console.log('Primer trabajo (el ejemplo del grifo)');
 tocar('ir', 'nuevo');
@@ -105,31 +107,49 @@ comprobar('total 95 € y "no es una factura"', papel.includes('95 €') && pape
 comprobar('las horas NO salen en el papel', !/\d\s?h\b/.test(papel) && !papel.includes('hora'));
 comprobar('ni los km ni la gasolina', !papel.includes('km') && !papel.includes('asolina'));
 comprobar('sale el material del ticket', papel.includes('Material: Grifo'));
+const mensaje = decodeURIComponent($('#enviar-whatsapp').href.split('text=')[1]);
+comprobar('el mensaje de WhatsApp lleva el total en negrita', mensaje.includes('*Total: 95 €*') && mensaje.includes('Para: Ana Pérez'));
+comprobar('y tampoco lleva horas, km ni gasolina', !/\d\s?h\b/.test(mensaje) && !mensaje.includes('km') && !mensaje.includes('asolina'));
 
-console.log('Segundo trabajo con el ayudante (cliente de siempre)');
+console.log('Ayudante: escribiendo como se habla');
 tocar('ir', 'ayudante');
 comprobar('el ayudante saluda', texto().includes('¿Qué quieres apuntar?'));
-tocarTexto('Un trabajo nuevo');
-chat('ana pérez');
+comprobar('se puede escribir desde el principio', !!$('[data-form="chat"] input'));
+chat('hola qué tal');
+comprobar('si no entiende, explica cómo escribirlo', texto().includes('No te he entendido') && texto().includes('30 € de tubos'));
+chat('nuevo trabajo');
+comprobar('pregunta el cliente y ofrece los de siempre', texto().includes('¿Para quién es el trabajo?') && [...doc.querySelectorAll('.opciones button')].some((b) => b.textContent === 'Ana Pérez'));
+tocarTexto('Ana Pérez');
 chat('Pintar la cocina');
 comprobar('reconoce a la clienta de siempre', texto().includes('Es cliente de siempre: 1 trabajo'));
-tocarTexto('Apuntar otra cosa');
-tocarTexto('Horas');
-comprobar('con un solo trabajo en marcha no pregunta cuál', texto().includes('Para el trabajo de ana pérez'));
-tocarTexto('2 h');
-comprobar('apunta las horas', texto().includes('Apuntadas 2 h'));
-tocarTexto('Apuntar otra cosa');
-tocarTexto('Un ticket');
-chat('diez');
-comprobar('si no entiende el número, lo dice', texto().includes('No lo entiendo'));
-chat('10');
-chat('Pintura');
-comprobar('apunta el ticket', texto().includes('Apuntado: 10 € de Pintura'));
-tocarTexto('Apuntar otra cosa');
-tocarTexto('Un viaje');
-comprobar('recuerda los km de esta clienta', texto().includes('Igual que la última vez: 20 km'));
+comprobar('sin botón de más: vuelve directo al menú', !texto().includes('Apuntar otra cosa') && !!$('[data-valor="ticket"]'));
+chat('2 horas');
+comprobar('«2 horas» → apunta 2 h sin preguntar', texto().includes('Para el trabajo de Ana Pérez') && texto().includes('Apuntadas 2 h'));
+chat('10 € de pintura');
+comprobar('«10 € de pintura» → ticket de 10 € de pintura', texto().includes('Apuntado: 10 € de pintura'));
+chat('viaje');
+comprobar('«viaje» → pregunta los km y recuerda los de la clienta', texto().includes('¿Cuántos km son') && texto().includes('Igual que la última vez: 20 km'));
 tocarTexto('Igual que la última vez: 20 km');
 comprobar('apunta el viaje con su gasolina', texto().includes('Apuntado un viaje de 20 km') && texto().includes('2,25 € de gasolina'));
+const apuntesAna = () => JSON.parse(window.localStorage.getItem('manitu-v1')).trabajos[0].apuntes;
+const antesDeProbar = apuntesAna().length;
+chat('5');
+comprobar('un número solo → pregunta qué es', texto().includes('¿Qué es ese 5?'));
+tocarTexto('Euros de un ticket');
+chat('cancelar');
+comprobar('«cancelar» lo deja sin apuntar nada', texto().includes('Vale, lo dejamos') && apuntesAna().length === antesDeProbar);
+chat('media hora');
+comprobar('«media hora» → 0,5 h', texto().includes('Apuntadas 0,5 h'));
+tocar('deshacer');
+comprobar('al Deshacer, el chat lo dice y se quita', texto().includes('Deshecho: lo último ya no está apuntado') && apuntesAna().length === antesDeProbar);
+chat('30 € de grifo nuevo');
+comprobar('«30 € de grifo nuevo» es un ticket, no un trabajo nuevo', texto().includes('Apuntado: 30 € de grifo nuevo'));
+tocar('deshacer');
+chat('cómo voy este mes');
+comprobar('«cómo voy este mes» → lo cobrado', texto().includes('Este mes has cobrado 95 €'));
+tocar('ir', 'inicio');
+tocar('ir', 'ayudante');
+comprobar('al salir y volver, la conversación sigue ahí', texto().includes('Pintar la cocina'));
 
 console.log('Descuento de cliente de siempre');
 tocar('ir', 'inicio');
@@ -148,6 +168,7 @@ console.log('Inicio y datos guardados');
 tocar('ir', 'inicio');
 comprobar('este mes: 95 + 65,70 = 160,70 €', texto().includes('160,70 €') && texto().includes('2 trabajos terminados'));
 comprobar('se guarda en el móvil', JSON.parse(window.localStorage.getItem('manitu-v1')).trabajos.length === 2);
+comprobar('con trabajos ya no sale la guía', !texto().includes('Cómo funciona'));
 
 console.log('Empezar de cero');
 tocar('ir', 'ajustes');

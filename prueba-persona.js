@@ -166,6 +166,7 @@ async function main() {
   await foto('alta-rellena');
   await tocarBoton('Empezar');
   comprobar('llega al inicio', (await texto()).includes('Este mes has cobrado'));
+  comprobar('la primera vez explica cómo funciona', (await texto()).includes('Cómo funciona'));
   await foto('inicio');
 
   console.log('Primer trabajo');
@@ -199,31 +200,45 @@ async function main() {
   await foto('papel');
   const papel = await texto();
   comprobar('el papel no enseña horas, km ni gasolina', !papel.includes(' h ') && !papel.includes('km') && !papel.includes('asolina'));
+  const enlace = await page.locator('#enviar-whatsapp').getAttribute('href');
+  comprobar('botón Enviar por WhatsApp con el papel dentro', enlace.startsWith('https://wa.me/?text=') && decodeURIComponent(enlace).includes('*Total: 95 €*'));
+  comprobar('el botón de WhatsApp se ve sin tapar al bajar', await (async () => { await llevarALaVista(page.locator('#enviar-whatsapp')); return seVeSinTapar(page.locator('#enviar-whatsapp')); })());
 
   console.log('Ayudante');
   await tocar(page.locator('#menu button', { hasText: 'Ayudante' }), 'menú Ayudante');
-  await tocarBoton('Un trabajo nuevo');
-  await escribir('[data-form="chat"] input', 'Ana Pérez'); await tocarBoton('Enviar');
-  await escribir('[data-form="chat"] input', 'Pintar la cocina'); await tocarBoton('Enviar');
-  await tocarBoton('Apuntar otra cosa');
-  await tocarBoton('Un viaje');
+  comprobar('nada más entrar se puede escribir', await page.locator('[data-form="chat"] input').isVisible());
+  await escribir('[data-form="chat"] input', 'nuevo trabajo'); await page.keyboard.press('Enter'); await pausa(page);
+  await tocarBoton('Ana Pérez');
+  await escribir('[data-form="chat"] input', 'Pintar la cocina'); await page.keyboard.press('Enter'); await pausa(page);
+  await escribir('[data-form="chat"] input', '2 horas'); await page.keyboard.press('Enter'); await pausa(page);
+  comprobar('«2 horas» apuntado escribiendo', (await texto()).includes('Apuntadas 2 h'));
+  await escribir('[data-form="chat"] input', 'viaje'); await page.keyboard.press('Enter'); await pausa(page);
   comprobar('recuerda los km de Ana', (await texto()).includes('Igual que la última vez: 20 km'));
   await tocarBoton('Igual que la última vez: 20 km');
   await page.waitForTimeout(300);
   comprobar('el chat baja solo y la última respuesta se ve entera', await seVeSinTapar(page.locator('.burbuja.bot')));
-  comprobar('y el botón para seguir también se ve', await seVeSinTapar(boton('Apuntar otra cosa')));
+  comprobar('y la caja de escribir también se ve', await seVeSinTapar(page.locator('[data-form="chat"] input')));
   await foto('ayudante');
 
   console.log('Deshacer (el aviso de abajo)');
   await tocar(page.locator('#aviso button', { hasText: 'Deshacer' }), 'Deshacer');
   const viajesDeAna = await page.evaluate(() => JSON.parse(localStorage.getItem('manitu-v1')).trabajos[0].apuntes.filter((a) => a.tipo === 'viaje').length);
   comprobar('Deshacer quita el viaje que acababa de apuntar', viajesDeAna === 0);
+  comprobar('y el chat lo dice', (await texto()).includes('Deshecho'));
 
   console.log('Ajustes');
   await tocar(page.locator('#menu button', { hasText: 'Ajustes' }), 'menú Ajustes');
   await leerPantalla();
   await foto('ajustes');
   await tocarBoton('Guardar los cambios');
+
+  console.log('Sin internet');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.context().setOffline(true);
+  await page.reload();
+  comprobar('sin internet, Manitu abre igual y con los datos', (await texto()).includes('Este mes has cobrado') && (await texto()).includes('95 €'));
+  await foto('sin-internet');
+  await page.context().setOffline(false);
 
   comprobar('sin errores en la consola de la página', errores.length === 0);
   if (errores.length) console.log('    ' + errores.join('\n    '));
