@@ -56,7 +56,11 @@ console.log('Alta');
 comprobar('empieza en la pantalla de alta', texto().includes('Empecemos'));
 rellenar({ oficio: 'fontanero' });
 comprobar('enseña los precios de la zona', $('#referencia').textContent.includes('entre 17 y 40'));
-rellenar({ nombre: 'Juan', precio_hora: '25', precio_viaje: '12', gasolina: '4', margen: '10', descuento_fiel: '0.1' });
+rellenar({ combustible: 'diesel' });
+comprobar('al elegir diésel propone 1,60 € el litro', $('#precio_litro').value === '1,6');
+rellenar({ vehiculo: 'furgoneta' });
+comprobar('al elegir furgoneta propone 7,5 litros', $('#consumo').value === '7,5');
+rellenar({ nombre: 'Juan', precio_hora: '25', precio_viaje: '12', margen: '10', descuento_fiel: '0.1', combustible: 'gasolina', precio_litro: '1,50' });
 enviar('perfil');
 comprobar('llega al inicio con su nombre', texto().includes('Juan') && texto().includes('Este mes has cobrado'));
 
@@ -71,7 +75,11 @@ rellenar({ importe: '30', cosa: 'Grifo' });
 enviar('ticket');
 tocar('formulario', 'horas');
 tocar('horas', '2');
-tocarTexto('Viaje');
+tocar('formulario', 'viaje');
+comprobar('la primera vez pregunta los km sin proponer', texto().includes('¿Cuántos km son') && !texto().includes('la última vez'));
+rellenar({ km: '20' });
+enviar('viaje');
+comprobar('el viaje sale con sus km', texto().includes('Viaje · 20 km'));
 comprobar('precio justo 95 € (30 + 3 + 50 + 12)', texto().includes('95 €'));
 
 console.log('Deshacer');
@@ -82,10 +90,11 @@ comprobar('Deshacer lo devuelve', texto().includes('95 €'));
 
 console.log('Terminar');
 tocarTexto('Terminar el trabajo');
-comprobar('con el precio justo quedan 30,50 €/h', texto().includes('30,50 € por hora'));
+comprobar('gasolina: 20 km × 7,5 l/100 km × 1,50 € = 2,25 €', texto().includes('Tu gasolina en este trabajo: 2,25 € (20 km)'));
+comprobar('con el precio justo quedan 31,38 €/h', texto().includes('31,38 € por hora'));
 comprobar('primer trabajo: sin casilla de descuento', !$('[data-accion="descuento"]'));
 rellenar({ pensaba: '50' });
-comprobar('pensando 50 € le quedan 8 €/h y le avisa', $('#comparar').textContent.includes('8 € por hora') && $('#comparar .ojo'));
+comprobar('pensando 50 € le quedan 8,88 €/h y le avisa', $('#comparar').textContent.includes('8,88 € por hora') && $('#comparar .ojo'));
 enviar('cerrar', 'button[value="justo"]');
 comprobar('terminado y cobrado 95 €', texto().includes('Cobraste') && texto().includes('95 €'));
 
@@ -94,6 +103,7 @@ tocar('papel', $('[data-accion="papel"]').dataset.valor);
 const papel = texto();
 comprobar('total 95 € y "no es una factura"', papel.includes('95 €') && papel.includes('Esto no es una factura'));
 comprobar('las horas NO salen en el papel', !/\d\s?h\b/.test(papel) && !papel.includes('hora'));
+comprobar('ni los km ni la gasolina', !papel.includes('km') && !papel.includes('asolina'));
 comprobar('sale el material del ticket', papel.includes('Material: Grifo'));
 
 console.log('Segundo trabajo con el ayudante (cliente de siempre)');
@@ -115,15 +125,20 @@ comprobar('si no entiende el número, lo dice', texto().includes('No lo entiendo
 chat('10');
 chat('Pintura');
 comprobar('apunta el ticket', texto().includes('Apuntado: 10 € de Pintura'));
+tocarTexto('Apuntar otra cosa');
+tocarTexto('Un viaje');
+comprobar('recuerda los km de esta clienta', texto().includes('Igual que la última vez: 20 km'));
+tocarTexto('Igual que la última vez: 20 km');
+comprobar('apunta el viaje con su gasolina', texto().includes('Apuntado un viaje de 20 km') && texto().includes('2,25 € de gasolina'));
 
 console.log('Descuento de cliente de siempre');
 tocar('ir', 'inicio');
 tocar('abrir', $('[data-accion="abrir"]').dataset.valor);
 tocarTexto('Terminar el trabajo');
 comprobar('sale la casilla de descuento, marcada', $('[data-accion="descuento"]') && $('[data-accion="descuento"]').checked);
-comprobar('61 € − 10 % = 54,90 €', texto().includes('54,90 €'));
+comprobar('73 € − 10 % = 65,70 €', texto().includes('65,70 €'));
 $('[data-accion="descuento"]').click();
-comprobar('quitando el descuento vuelve a 61 €', texto().includes('Precio justo61 €'));
+comprobar('quitando el descuento vuelve a 73 €', texto().includes('Precio justo73 €'));
 $('[data-accion="descuento"]').click();
 enviar('cerrar', 'button[value="justo"]');
 tocar('papel', $('[data-accion="papel"]').dataset.valor);
@@ -131,7 +146,7 @@ comprobar('el papel enseña el descuento', texto().includes('Descuento por ser c
 
 console.log('Inicio y datos guardados');
 tocar('ir', 'inicio');
-comprobar('este mes: 95 + 54,90 = 149,90 €', texto().includes('149,90 €') && texto().includes('2 trabajos terminados'));
+comprobar('este mes: 95 + 65,70 = 160,70 €', texto().includes('160,70 €') && texto().includes('2 trabajos terminados'));
 comprobar('se guarda en el móvil', JSON.parse(window.localStorage.getItem('manitu-v1')).trabajos.length === 2);
 
 console.log('Empezar de cero');
@@ -140,7 +155,7 @@ tocar('pedir-borrar');
 tocar('borrar-todo');
 comprobar('vuelve al alta', texto().includes('Empecemos'));
 tocar('deshacer');
-comprobar('y Deshacer lo recupera todo', texto().includes('149,90 €'));
+comprobar('y Deshacer lo recupera todo', texto().includes('160,70 €'));
 
 console.log('\n' + bien + ' bien, ' + mal + ' mal');
 process.exit(mal ? 1 : 0);

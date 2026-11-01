@@ -1,11 +1,28 @@
 // Las cuentas de un trabajo: las mismas que usaba el bot de Telegram (Cuentas.gs).
 //   precio justo = material + gestión del material + horas × €/hora + viajes × €/viaje
 //   total        = precio justo − descuento de cliente de siempre (si lo tiene)
+//   gasolina de un viaje = km de ida y vuelta × consumo (litros cada 100 km) ÷ 100 × precio del litro
 //   lo que de verdad te queda por hora = (lo que cobras − material − gasolina) ÷ horas
 // No toca la pantalla: solo hace números. Así se puede probar sola.
 
 (function () {
-  const POR_DEFECTO = { precio_hora: 25, precio_viaje: 12, gasolina: 4, margen: 0.10, descuento_fiel: 0 };
+  // gasolina: lo que se usaba antes por viaje (sin km). Solo sirve para viajes apuntados sin kilómetros.
+  const POR_DEFECTO = { precio_hora: 25, precio_viaje: 12, gasolina: 4, margen: 0.10, descuento_fiel: 0,
+    vehiculo: 'mediano', combustible: 'gasolina', consumo: 7, precio_litro: 1.5 };
+
+  // Consumo real aproximado (algo más que lo que dice el fabricante, sobre todo en ciudad y con carga).
+  const VEHICULOS = {
+    pequeno:   { nombre: 'Coche pequeño', consumo: 6 },
+    mediano:   { nombre: 'Coche mediano', consumo: 7 },
+    furgoneta: { nombre: 'Furgoneta',     consumo: 7.5 },
+    otro:      { nombre: 'Otro',          consumo: null }
+  };
+
+  // Precio del litro en Gran Canaria visto en gasolineras (julio-septiembre de 2026).
+  const COMBUSTIBLES = {
+    gasolina: { nombre: 'Gasolina', min: 1.43, max: 1.53, normal: 1.5 },
+    diesel:   { nombre: 'Diésel',   min: 1.49, max: 1.70, normal: 1.6 }
+  };
 
   // Precios por hora orientativos, buscados en internet el 01/11/2026 (webs de presupuestos).
   // Las webs no coinciden entre sí: son una guía, no un precio exacto.
@@ -35,33 +52,43 @@
     return isFinite(n) && n >= 0 ? n : null;
   }
 
-  // Junta los apuntes de un trabajo: tickets, horas y viajes.
-  function resumen(trabajo) {
+  // Lo que cuesta en gasolina un viaje de "km" kilómetros (ida y vuelta).
+  function gasolinaViaje(km, ajustes) {
+    const a = Object.assign({}, POR_DEFECTO, ajustes || {});
+    return redondear(Number(km) * a.consumo / 100 * a.precio_litro);
+  }
+
+  // Junta los apuntes de un trabajo: tickets, horas y viajes (con sus km y su gasolina).
+  function resumen(trabajo, ajustes) {
+    const a = Object.assign({}, POR_DEFECTO, ajustes || {});
     const apuntes = trabajo.apuntes || [];
-    const tickets = apuntes.filter((a) => a.tipo === 'ticket');
+    const tickets = apuntes.filter((x) => x.tipo === 'ticket');
+    const viajes = apuntes.filter((x) => x.tipo === 'viaje');
     return {
       tickets: tickets,
-      material: redondear(tickets.reduce((s, a) => s + Number(a.cantidad), 0)),
-      horas: redondear(apuntes.filter((a) => a.tipo === 'horas').reduce((s, a) => s + Number(a.cantidad), 0)),
-      viajes: apuntes.filter((a) => a.tipo === 'viaje').reduce((s, a) => s + Number(a.cantidad), 0)
+      material: redondear(tickets.reduce((s, x) => s + Number(x.cantidad), 0)),
+      horas: redondear(apuntes.filter((x) => x.tipo === 'horas').reduce((s, x) => s + Number(x.cantidad), 0)),
+      viajes: viajes.reduce((s, x) => s + Number(x.cantidad), 0),
+      km: redondear(viajes.reduce((s, x) => s + (x.km != null ? Number(x.km) : 0), 0)),
+      gasolina: redondear(viajes.reduce((s, x) => s + (x.km != null ? gasolinaViaje(x.km, a) : a.gasolina * Number(x.cantidad)), 0))
     };
   }
 
   // ajustes: los del trabajador. conDescuento: si se aplica el descuento de cliente de siempre.
   function calcular(trabajo, ajustes, conDescuento) {
     const a = Object.assign({}, POR_DEFECTO, ajustes || {});
-    const r = resumen(trabajo);
+    const r = resumen(trabajo, a);
     const gestion = redondear(r.material * a.margen);
     const manoObra = redondear(r.horas * a.precio_hora);
     const desplazamiento = redondear(r.viajes * a.precio_viaje);
     const justo = redondear(r.material + gestion + manoObra + desplazamiento);
     const descuento = conDescuento ? redondear(justo * a.descuento_fiel) : 0;
     const total = redondear(justo - descuento);
-    const gastosReales = redondear(r.material + r.viajes * a.gasolina);
+    const gastosReales = redondear(r.material + r.gasolina);
     return {
       material: r.material, gestion: gestion, mano_obra: manoObra, desplazamiento: desplazamiento,
       justo: justo, descuento: descuento, total: total, gastos_reales: gastosReales,
-      horas: r.horas, viajes: r.viajes, tickets: r.tickets, precio_hora: a.precio_hora
+      horas: r.horas, viajes: r.viajes, km: r.km, gasolina: r.gasolina, tickets: r.tickets, precio_hora: a.precio_hora
     };
   }
 
@@ -71,5 +98,5 @@
     return redondear((Number(cobrado) - cuentas.gastos_reales) / cuentas.horas);
   }
 
-  window.Cuentas = { POR_DEFECTO, REFERENCIAS, redondear, euros, leerNumero, resumen, calcular, porHora };
+  window.Cuentas = { POR_DEFECTO, REFERENCIAS, VEHICULOS, COMBUSTIBLES, redondear, euros, leerNumero, gasolinaViaje, resumen, calcular, porHora };
 })();

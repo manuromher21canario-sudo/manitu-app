@@ -71,10 +71,17 @@
     trabajo.apuntes.push({ id: nuevoId(), tipo: tipo, cantidad: cantidad, cosa: cosa || '', fecha: new Date().toISOString() });
   }
 
+  function apuntarViaje(trabajo, km) {
+    cambiar('Viaje apuntado', () => {
+      apuntar(trabajo, 'viaje', 1);
+      trabajo.apuntes[trabajo.apuntes.length - 1].km = km;
+    });
+  }
+
   function textoApunte(a) {
     if (a.tipo === 'ticket') return 'Ticket' + (a.cosa ? ': ' + a.cosa : '') + ' · ' + C.euros(a.cantidad);
     if (a.tipo === 'horas') return String(a.cantidad).replace('.', ',') + ' h de trabajo';
-    return 'Viaje';
+    return 'Viaje' + (a.km != null ? ' · ' + String(a.km).replace('.', ',') + ' km' : '');
   }
 
   // Lo cobrado este mes y lo que de verdad le ha quedado por hora.
@@ -109,6 +116,22 @@
     const rango = r.min === r.max ? 'unos ' + r.min + ' €' : 'entre ' + r.min + ' y ' + r.max + ' €';
     return r.nombre + 's: ' + rango + ' la hora (' + r.zona + '). Es orientativo: las webs no coinciden entre sí.';
   }
+  function referenciaLitro(combustible) {
+    const r = C.COMBUSTIBLES[combustible];
+    if (!r) return '';
+    const n = (x) => String(x.toFixed(2)).replace('.', ',');
+    return 'En gasolineras de Gran Canaria se ha visto entre ' + n(r.min) + ' y ' + n(r.max) + ' € el litro (verano de 2026). Mira el de tu gasolinera.';
+  }
+
+  // Los km del último viaje a casa de ese cliente, para no tener que escribirlos otra vez.
+  function kmDeCliente(cliente) {
+    for (const t of datos.trabajos) {
+      if (!mismoCliente(t.cliente, cliente)) continue;
+      const viajes = t.apuntes.filter((a) => a.tipo === 'viaje' && a.km != null);
+      if (viajes.length) return viajes[viajes.length - 1].km;
+    }
+    return null;
+  }
 
   let temporizador = null;
   function avisar(texto, conDeshacer) {
@@ -127,7 +150,7 @@
     alta: function () {
       return '<div class="cabecera"><img src="iconos/manitu-icono.svg" alt=""><span class="nombre">Manitu</span></div>' +
         '<h1>Empecemos</h1><p class="suave">Solo hace falta una vez. Luego lo puedes cambiar en Ajustes.</p>' +
-        formularioPerfil({ nombre: '', oficio: 'fontanero', precio_hora: '', precio_viaje: C.POR_DEFECTO.precio_viaje, gasolina: C.POR_DEFECTO.gasolina, margen: C.POR_DEFECTO.margen, descuento_fiel: 0.05 }, 'Empezar');
+        formularioPerfil({ nombre: '', oficio: 'fontanero', precio_hora: '', precio_viaje: C.POR_DEFECTO.precio_viaje, margen: C.POR_DEFECTO.margen, descuento_fiel: 0.05 }, 'Empezar');
     },
 
     inicio: function () {
@@ -185,7 +208,7 @@
         return html;
       }
 
-      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket') + boton('Horas', 'formulario', 'horas') + boton('Viaje', 'viaje', t.id) + '</div>';
+      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket') + boton('Horas', 'formulario', 'horas') + boton('Viaje', 'formulario', 'viaje') + '</div>';
       if (vista.formulario === 'ticket') {
         html += '<form data-form="ticket" class="caja"><label for="importe">¿Cuánto pone el ticket?</label>' +
           '<input id="importe" name="importe" inputmode="decimal" required placeholder="30,50">' +
@@ -197,6 +220,16 @@
           [0.5, 1, 2, 4, 8].map((h) => boton(String(h).replace('.', ',') + ' h', 'horas', h)).join('') + '</div>' +
           '<form data-form="horas"><label for="otras">Otra cantidad</label><div class="fila"><input id="otras" name="horas" inputmode="decimal" required placeholder="3,5">' +
           '<button class="boton principal" type="submit" style="margin:0">Apuntar</button></div></form></div>';
+      }
+
+      if (vista.formulario === 'viaje') {
+        const ultima = kmDeCliente(t.cliente);
+        html += '<div class="caja">' +
+          (ultima != null ? '<p><strong>¿Los mismos km que la última vez?</strong></p>' + boton('Sí, ' + String(ultima).replace('.', ',') + ' km', 'viaje-km', ultima, 'principal') : '') +
+          '<form data-form="viaje"><label for="km">' + (ultima != null ? 'O escribe otros' : '¿Cuántos km son, ida y vuelta?') + '</label>' +
+          '<div class="fila"><input id="km" name="km" inputmode="decimal" required placeholder="20">' +
+          '<button class="boton principal" type="submit" style="margin:0">Apuntar</button></div></form>' +
+          '<p class="suave">Solo lo ves tú: con esto la app sabe lo que gastas en gasolina.</p></div>';
       }
 
       const c = C.calcular(t, datos.perfil, false);
@@ -219,6 +252,7 @@
         html += '<label class="check"><input type="checkbox" data-accion="descuento"' + (vista.con_descuento ? ' checked' : '') + '>' +
           '<span>Descuento de cliente de siempre (' + porciento(p.descuento_fiel) + '). En el papel le saldrá que lo cuidas.</span></label>';
       }
+      if (c.viajes) html += '<p class="suave">Tu gasolina en este trabajo: ' + C.euros(c.gasolina) + (c.km ? ' (' + String(c.km).replace('.', ',') + ' km)' : '') + '. Esto no sale en el papel del cliente.</p>';
       html += '<div id="resultado">' + textoPorHora(c, c.total, 'Con el precio justo') + '</div>';
       html += '<form data-form="cerrar"><label for="pensaba">¿Cuánto pensabas cobrar? <span class="suave">(si quieres comparar)</span></label>' +
         '<input id="pensaba" name="pensaba" inputmode="decimal" autocomplete="off" placeholder="50">' +
@@ -283,19 +317,29 @@
   function formularioPerfil(p, textoBoton) {
     const oficios = Object.keys(C.REFERENCIAS).map((k) => '<option value="' + k + '"' + (p.oficio === k ? ' selected' : '') + '>' + C.REFERENCIAS[k].nombre + '</option>').join('');
     const descuentos = [0, 0.05, 0.1, 0.15].map((d) => '<option value="' + d + '"' + (Number(p.descuento_fiel) === d ? ' selected' : '') + '>' + (d ? porciento(d) : 'Sin descuento') + '</option>').join('');
-    const num = (v) => (v === '' || v == null ? '' : String(v).replace('.', ','));
+    const num = (x) => (x === '' || x == null ? '' : String(x).replace('.', ','));
+    // Quien se dio de alta antes de que existiera el vehículo recibe los valores normales.
+    const v = Object.assign({}, C.POR_DEFECTO, p);
+    const vehiculos = Object.keys(C.VEHICULOS).map((k) => '<option value="' + k + '"' + (v.vehiculo === k ? ' selected' : '') + '>' + C.VEHICULOS[k].nombre + '</option>').join('');
+    const combustibles = Object.keys(C.COMBUSTIBLES).map((k) => '<option value="' + k + '"' + (v.combustible === k ? ' selected' : '') + '>' + C.COMBUSTIBLES[k].nombre + '</option>').join('');
     return '<form data-form="perfil">' +
       '<label for="nombre">Tu nombre</label><input id="nombre" name="nombre" required autocomplete="off" value="' + esc(p.nombre) + '" placeholder="Juan">' +
       '<label for="oficio">Tu oficio</label><select id="oficio" name="oficio" data-accion="oficio">' + oficios + '</select>' +
+      '<h2>Tus precios</h2>' +
       '<label for="precio_hora">¿Cuánto quieres ganar por hora?</label><input id="precio_hora" name="precio_hora" inputmode="decimal" required value="' + num(p.precio_hora) + '" placeholder="25">' +
       '<p class="suave" id="referencia">' + esc(referencia(p.oficio)) + '</p>' +
       '<label for="precio_viaje">¿Cuánto cobras por cada viaje a la casa?</label><input id="precio_viaje" name="precio_viaje" inputmode="decimal" required value="' + num(p.precio_viaje) + '">' +
-      '<label for="gasolina">¿Cuánto te gastas tú en gasolina por viaje?</label><input id="gasolina" name="gasolina" inputmode="decimal" required value="' + num(p.gasolina) + '">' +
-      '<p class="suave">Solo lo ves tú: sirve para saber lo que de verdad te queda.</p>' +
       '<label for="margen">Gestión del material (por ir a comprarlo y adelantar el dinero)</label><input id="margen" name="margen" inputmode="decimal" required value="' + num(Math.round(Number(p.margen) * 100)) + '">' +
       '<p class="suave">En %. Normalmente un 10.</p>' +
       '<label for="descuento_fiel">Descuento para tus clientes de siempre</label><select id="descuento_fiel" name="descuento_fiel">' + descuentos + '</select>' +
       '<p class="suave">Se aplica desde el segundo trabajo con el mismo cliente. Tú decides cada vez si lo usas.</p>' +
+      '<h2>Tu vehículo</h2><p class="suave">Solo lo ves tú: sirve para saber cuánto gastas de verdad en gasolina en cada viaje.</p>' +
+      '<label for="vehiculo">¿Con qué vas a los trabajos?</label><select id="vehiculo" name="vehiculo" data-accion="vehiculo">' + vehiculos + '</select>' +
+      '<label for="consumo">¿Cuánto gasta? <span class="suave">(litros cada 100 km)</span></label><input id="consumo" name="consumo" inputmode="decimal" required value="' + num(v.consumo) + '">' +
+      '<p class="suave">Si no lo sabes, deja el que viene puesto: es lo normal en ese tipo de vehículo.</p>' +
+      '<label for="combustible">¿Gasolina o diésel?</label><select id="combustible" name="combustible" data-accion="combustible">' + combustibles + '</select>' +
+      '<label for="precio_litro">¿Cuánto te cuesta el litro donde echas?</label><input id="precio_litro" name="precio_litro" inputmode="decimal" required value="' + num(v.precio_litro) + '">' +
+      '<p class="suave" id="ref-litro">' + esc(referenciaLitro(v.combustible)) + '</p>' +
       '<button class="boton principal" type="submit">' + textoBoton + '</button></form>';
   }
 
@@ -353,9 +397,13 @@
   function seguirCon(que) {
     if (que === 'ticket') return irPaso('importe');
     if (que === 'horas') return irPaso('horas');
+    irPaso('km');
+  }
+
+  function guardarViaje(km) {
     const t = buscarTrabajo(vista.chat.datos.id);
-    cambiar('Viaje apuntado', () => apuntar(t, 'viaje', 1));
-    decir('Apuntado un viaje en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '.');
+    apuntarViaje(t, km);
+    decir('Apuntado un viaje de ' + String(km).replace('.', ',') + ' km en el trabajo de ' + t.cliente + ' (unos ' + C.euros(C.gasolinaViaje(km, datos.perfil)) + ' de gasolina). Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '.');
     irPaso('otra');
   }
 
@@ -407,6 +455,19 @@
         const n = C.leerNumero(texto);
         if (n == null || n === 0 || n > 24) return decir('No lo entiendo. Escribe las horas, por ejemplo 3,5.');
         guardarHoras(n);
+      }
+    },
+    km: {
+      pregunta: () => '¿Cuántos km son, ida y vuelta?', escribir: 'Km', numero: true,
+      opciones: (d) => {
+        const ultima = kmDeCliente(buscarTrabajo(d.id).cliente);
+        return ultima != null ? [{ texto: 'Igual que la última vez: ' + String(ultima).replace('.', ',') + ' km', valor: ultima }] : [];
+      },
+      elegir: function (v) { guardarViaje(Number(v)); },
+      escrito: function (texto) {
+        const n = C.leerNumero(texto);
+        if (n == null || n > 1000) return decir('No lo entiendo. Escribe solo los km, por ejemplo 20.');
+        guardarViaje(n);
       }
     },
     cliente: {
@@ -466,7 +527,7 @@
     abrir: (v) => ir('trabajo', { id: Number(v) }),
     deshacer: () => deshacer(),
     formulario: (v) => { vista.formulario = vista.formulario === v ? null : v; pintar(); },
-    viaje: (v) => { cambiar('Viaje apuntado', () => apuntar(buscarTrabajo(v), 'viaje', 1)); pintar(); },
+    'viaje-km': (v) => { apuntarViaje(buscarTrabajo(vista.id), Number(v)); vista.formulario = null; pintar(); },
     horas: (v) => { cambiar('Horas apuntadas', () => apuntar(buscarTrabajo(vista.id), 'horas', Number(v))); vista.formulario = null; pintar(); },
     quitar: (v) => {
       const t = buscarTrabajo(vista.id);
@@ -512,6 +573,16 @@
       const campo = document.getElementById('precio_hora');
       if (r && r.min != null && !campo.value) campo.placeholder = String(Math.round((r.min + r.max) / 2));
     }
+    if (el.dataset.accion === 'vehiculo') {
+      const v = C.VEHICULOS[el.value];
+      const campo = document.getElementById('consumo');
+      if (v && v.consumo) campo.value = String(v.consumo).replace('.', ',');
+      else { campo.value = ''; campo.focus(); }
+    }
+    if (el.dataset.accion === 'combustible') {
+      document.getElementById('ref-litro').textContent = referenciaLitro(el.value);
+      document.getElementById('precio_litro').value = String(C.COMBUSTIBLES[el.value].normal).replace('.', ',');
+    }
     if (el.dataset.accion === 'restaurar' && el.files[0]) {
       el.files[0].text().then((texto) => {
         let nuevos;
@@ -545,9 +616,10 @@
       const perfil = {
         nombre: f.nombre.trim(), oficio: f.oficio,
         precio_hora: C.leerNumero(f.precio_hora), precio_viaje: C.leerNumero(f.precio_viaje),
-        gasolina: C.leerNumero(f.gasolina), margen: C.leerNumero(f.margen), descuento_fiel: Number(f.descuento_fiel)
+        margen: C.leerNumero(f.margen), descuento_fiel: Number(f.descuento_fiel),
+        vehiculo: f.vehiculo, combustible: f.combustible, consumo: C.leerNumero(f.consumo), precio_litro: C.leerNumero(f.precio_litro)
       };
-      if (!perfil.nombre || !perfil.precio_hora || perfil.precio_viaje == null || perfil.gasolina == null || perfil.margen == null) {
+      if (!perfil.nombre || !perfil.precio_hora || perfil.precio_viaje == null || perfil.margen == null || !perfil.consumo || !perfil.precio_litro) {
         return avisar('Revisa los números: escribe solo cifras', false);
       }
       perfil.margen = perfil.margen / 100;
@@ -564,6 +636,13 @@
       const n = C.leerNumero(f.importe);
       if (!n) return avisar('Escribe solo el número del ticket, por ejemplo 30,50', false);
       cambiar('Ticket apuntado', () => apuntar(buscarTrabajo(vista.id), 'ticket', n, (f.cosa || '').trim()));
+      vista.formulario = null;
+      return pintar();
+    }
+    if (tipo === 'viaje') {
+      const n = C.leerNumero(f.km);
+      if (n == null || n > 1000) return avisar('Escribe los km, por ejemplo 20', false);
+      apuntarViaje(buscarTrabajo(vista.id), n);
       vista.formulario = null;
       return pintar();
     }
