@@ -185,6 +185,13 @@ async function main() {
   await foto('viaje');
   await tocarBoton('Apuntar');
   comprobar('precio justo 95 €', (await texto()).includes('95 €'));
+  await tocarBoton('Más');
+  await tocarBoton('El cliente me dio dinero');
+  await escribir('#importe', '50');
+  await escribir('#cosa', 'Para el material');
+  await tocarBoton('Apuntar el dinero');
+  comprobar('dinero del cliente: queda por cobrar 45 €', (await texto()).includes('Te queda por cobrar 45 €'));
+  await foto('dinero-del-cliente');
   await leerPantalla();
   await foto('trabajo');
 
@@ -200,6 +207,7 @@ async function main() {
   await foto('papel');
   const papel = await texto();
   comprobar('el papel no enseña horas, km ni gasolina', !papel.includes(' h ') && !papel.includes('km') && !papel.includes('asolina'));
+  comprobar('el papel dice lo ya pagado y lo que queda', papel.includes('Ya pagado (para el material)') && papel.includes('Queda por pagar'));
   const enlace = await page.locator('#enviar-whatsapp').getAttribute('href');
   comprobar('botón Enviar por WhatsApp con el papel dentro', enlace.startsWith('https://wa.me/?text=') && decodeURIComponent(enlace).includes('*Total: 95 €*'));
   comprobar('el botón de WhatsApp se ve sin tapar al bajar', await (async () => { await llevarALaVista(page.locator('#enviar-whatsapp')); return seVeSinTapar(page.locator('#enviar-whatsapp')); })());

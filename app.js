@@ -79,10 +79,22 @@
     });
   }
 
+  // «Para el material» → «para el material», para ponerlo en medio de una frase.
+  function minuscula(t) { return t ? t.charAt(0).toLowerCase() + t.slice(1) : t; }
+
   function textoApunte(a) {
     if (a.tipo === 'ticket') return 'Ticket' + (a.cosa ? ': ' + a.cosa : '') + ' · ' + C.euros(a.cantidad);
     if (a.tipo === 'horas') return String(a.cantidad).replace('.', ',') + ' h de trabajo';
+    if (a.tipo === 'adelanto') return 'Te dio el cliente' + (a.cosa ? ' (' + minuscula(a.cosa) + ')' : '') + ' · ' + C.euros(a.cantidad);
+    if (a.tipo === 'gasto') return 'Otro gasto' + (a.cosa ? ': ' + a.cosa : '') + ' · ' + C.euros(a.cantidad);
+    if (a.tipo === 'nota') return 'Nota: ' + a.cosa;
     return 'Viaje' + (a.km != null ? ' · ' + String(a.km).replace('.', ',') + ' km' : '');
+  }
+
+  // Lo que el cliente ya dio por adelantado y lo que falta por cobrar.
+  function textoAdelanto(c, total) {
+    if (!c.adelantado) return '';
+    return '<p>El cliente ya te dio <strong>' + C.euros(c.adelantado) + '</strong>. Te queda por cobrar <strong>' + C.euros(C.redondear(total - c.adelantado)) + '</strong>.</p>';
   }
 
   // Lo cobrado este mes y lo que de verdad le ha quedado por hora.
@@ -213,13 +225,42 @@
         html += '<div class="caja"><p class="suave">Terminado el ' + fecha(t.cierre.fecha) + '. Cobraste</p><p class="cifra">' + C.euros(t.cierre.cobrado) + '</p>';
         const ph = C.porHora(c, t.cierre.cobrado);
         if (ph != null) html += '<p>Te quedaron <strong>' + C.euros(ph) + ' por hora</strong>.</p>';
+        html += textoAdelanto(c, t.cierre.cobrado);
         html += '</div>' + boton('Ver el papel para el cliente', 'papel', t.id, 'principal') + boton('Reabrir el trabajo', 'reabrir', t.id);
         html += '<h2>Lo apuntado</h2>' + listaApuntes(t, false);
         return html;
       }
 
       const marcar = (f) => (vista.formulario === f ? 'abierto' : '');
-      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket', marcar('ticket')) + boton('Horas', 'formulario', 'horas', marcar('horas')) + boton('Viaje', 'formulario', 'viaje', marcar('viaje')) + '</div>';
+      const enMas = ['mas', 'adelanto', 'gasto', 'nota'].includes(vista.formulario) ? 'abierto' : '';
+      html += '<div class="fila">' + boton('Ticket', 'formulario', 'ticket', marcar('ticket')) + boton('Horas', 'formulario', 'horas', marcar('horas')) +
+        boton('Viaje', 'formulario', 'viaje', marcar('viaje')) + boton('Más', 'formulario', 'mas', enMas) + '</div>';
+      if (vista.formulario === 'mas') {
+        html += '<div class="caja"><p><strong>¿Qué ha pasado?</strong></p>' +
+          boton('El cliente me dio dinero', 'formulario', 'adelanto') +
+          boton('Otro gasto (parking, peaje, alquiler, un ayudante…)', 'formulario', 'gasto') +
+          boton('Apuntar una nota', 'formulario', 'nota') + '</div>';
+      }
+      if (vista.formulario === 'adelanto') {
+        html += '<form data-form="adelanto" class="caja"><label for="importe">¿Cuánto te dio el cliente?</label>' +
+          '<input id="importe" name="importe" inputmode="decimal" required placeholder="50">' +
+          '<label for="cosa">¿Para qué? <span class="suave">(si quieres)</span></label><input id="cosa" name="cosa" autocomplete="off" placeholder="Para el material">' +
+          '<p class="suave">No cambia el precio justo: se descuenta de lo que te queda por cobrar, y en el papel sale como ya pagado.</p>' +
+          '<button class="boton principal" type="submit">Apuntar el dinero</button></form>';
+      }
+      if (vista.formulario === 'gasto') {
+        html += '<form data-form="gasto" class="caja"><label for="importe">¿Cuánto te costó?</label>' +
+          '<input id="importe" name="importe" inputmode="decimal" required placeholder="3">' +
+          '<label for="cosa">¿Qué fue?</label><input id="cosa" name="cosa" required autocomplete="off" placeholder="Parking">' +
+          '<p class="suave">Se le cobra al cliente tal cual, sin el % de gestión del material.</p>' +
+          '<button class="boton principal" type="submit">Apuntar el gasto</button></form>';
+      }
+      if (vista.formulario === 'nota') {
+        html += '<form data-form="nota" class="caja"><label for="nota">Tu nota</label>' +
+          '<input id="nota" name="nota" required autocomplete="off" placeholder="El cliente pone los azulejos">' +
+          '<p class="suave">Solo la ves tú. No sale en el papel del cliente.</p>' +
+          '<button class="boton principal" type="submit">Guardar la nota</button></form>';
+      }
       if (vista.formulario === 'ticket') {
         html += '<form data-form="ticket" class="caja"><label for="importe">¿Cuánto pone el ticket?</label>' +
           '<input id="importe" name="importe" inputmode="decimal" required placeholder="30,50">' +
@@ -244,7 +285,7 @@
       }
 
       const c = C.calcular(t, datos.perfil, false);
-      html += '<div class="caja"><p class="suave">Precio justo hasta ahora</p><p class="cifra">' + C.euros(c.justo) + '</p></div>';
+      html += '<div class="caja"><p class="suave">Precio justo hasta ahora</p><p class="cifra">' + C.euros(c.justo) + '</p>' + textoAdelanto(c, c.justo) + '</div>';
       html += '<h2>Lo apuntado</h2>' + listaApuntes(t, true);
       html += boton('Terminar el trabajo', 'ir', 'cerrar', 'principal');
       html += '<button class="enlace rojo" data-accion="borrar-trabajo" data-valor="' + t.id + '">Borrar este trabajo</button>';
@@ -264,7 +305,7 @@
           '<span>Descuento de cliente de siempre (' + porciento(p.descuento_fiel) + '). En el papel le saldrá que lo cuidas.</span></label>';
       }
       if (c.viajes) html += '<p class="suave">Tu gasolina en este trabajo: ' + C.euros(c.gasolina) + (c.km ? ' (' + String(c.km).replace('.', ',') + ' km)' : '') + '. Esto no sale en el papel del cliente.</p>';
-      html += '<div id="resultado">' + textoPorHora(c, c.total, 'Con el precio justo') + '</div>';
+      html += '<div id="resultado">' + textoPorHora(c, c.total, 'Con el precio justo') + textoAdelanto(c, c.total) + '</div>';
       html += '<form data-form="cerrar"><label for="pensaba">¿Cuánto pensabas cobrar? <span class="suave">(si quieres comparar)</span></label>' +
         '<input id="pensaba" name="pensaba" inputmode="decimal" autocomplete="off" placeholder="50">' +
         '<div id="comparar"></div>' +
@@ -357,11 +398,16 @@
     const l = [];
     c.tickets.forEach((a) => l.push({ texto: 'Material' + (a.cosa ? ': ' + a.cosa : ''), importe: a.cantidad }));
     if (c.gestion) l.push({ texto: 'Gestión del material (compra y transporte)', importe: c.gestion });
+    c.otros.forEach((a) => l.push({ texto: a.cosa ? a.cosa.charAt(0).toUpperCase() + a.cosa.slice(1) : 'Otros gastos', importe: a.cantidad }));
     if (c.mano_obra) l.push({ texto: 'Mano de obra', importe: c.mano_obra });
     if (c.desplazamiento) l.push({ texto: 'Desplazamiento', importe: c.desplazamiento });
     if (c.descuento) l.push({ texto: 'Descuento por ser cliente de siempre', importe: c.descuento, resta: true });
     if (ajuste) l.push({ texto: ajuste < 0 ? 'Rebaja' : 'Suplemento', importe: Math.abs(ajuste), resta: ajuste < 0 });
     l.push({ texto: 'Total', importe: t.cierre.cobrado, total: true });
+    if (c.adelantado) {
+      c.adelantos.forEach((a) => l.push({ texto: 'Ya pagado' + (a.cosa ? ' (' + minuscula(a.cosa) + ')' : ''), importe: a.cantidad, resta: true }));
+      l.push({ texto: 'Queda por pagar', importe: C.redondear(Number(t.cierre.cobrado) - c.adelantado), total: true });
+    }
     return l;
   }
 
@@ -391,6 +437,7 @@
   function tablaCuentas(c, p, conTotal) {
     let filas = '<tr><td>Material</td><td>' + C.euros(c.material) + '</td></tr>' +
       '<tr><td>Gestión del material (' + porciento(p.margen) + ')</td><td>' + C.euros(c.gestion) + '</td></tr>' +
+      (c.otros_gastos ? '<tr><td>Otros gastos</td><td>' + C.euros(c.otros_gastos) + '</td></tr>' : '') +
       '<tr><td>Mano de obra (' + String(c.horas).replace('.', ',') + ' h × ' + C.euros(p.precio_hora) + ')</td><td>' + C.euros(c.mano_obra) + '</td></tr>' +
       '<tr><td>Desplazamiento (' + c.viajes + (c.viajes === 1 ? ' viaje' : ' viajes') + ')</td><td>' + C.euros(c.desplazamiento) + '</td></tr>';
     if (c.descuento) filas += '<tr><td>Descuento de cliente de siempre</td><td>−' + C.euros(c.descuento) + '</td></tr>';
@@ -411,7 +458,7 @@
   // Entiende buscando números y palabras clave. La conversación se guarda mientras la app esté abierta.
 
   let chat = null;
-  const AYUDA = 'Puedes pulsar un botón o escribirlo, por ejemplo: «30 € de tubos», «2 horas», «media hora», «viaje de 20 km» o «nuevo trabajo».';
+  const AYUDA = 'Puedes pulsar un botón o escribirlo como lo dirías: «30 € de tubos», «2 horas», «viaje de 20 km», «el cliente me dio 50 € para el material», «parking 3 €» o «nota: pone él los azulejos».';
 
   function chatNuevo() {
     return { mensajes: [{ de: 'bot', texto: 'Hola, ' + datos.perfil.nombre + '. ¿Qué quieres apuntar? ' + AYUDA }], paso: 'menu', datos: {} };
@@ -432,6 +479,19 @@
     const num = (m) => C.leerNumero(m);
     let m;
     if (/\b(cancelar|cancela|nada|dejalo|olvidalo|salir)\b/.test(t)) return { que: 'cancelar' };
+    const numero = (m = t.match(new RegExp(NUM))) ? num(m[1]) : null;
+    // Lo escrito sin el número ni la moneda: «50 € para el material» → «para el material»
+    const resto = String(texto).replace(/\d+(?:[.,]\d+)?\s*(€|euros?|eur|e\b)?/i, '').replace(/€/g, '').replace(/\s+/g, ' ').trim();
+    if ((m = String(texto).match(/^\s*(nota|apunta que|apuntar que|recuerda que|ojo)\s*[:,.-]?\s*(.*)$/i))) return { que: 'nota', cosa: m[2].trim() };
+    // Dinero que da el cliente (adelanto, a cuenta, para el material…)
+    if (/(me (dio|da|ha dado|ha pagado|pago|pagaron|adelanto|dejo|ha dejado|paso|dieron)|adelanto|a cuenta|senal|por adelantado|anticipo|dinero del cliente)/.test(t)) {
+      const para = (m = resto.match(/\b(para .+)$/i)) ? m[1] : '';
+      return { que: 'adelanto', importe: numero, cosa: para };
+    }
+    // Otros gastos que no son material
+    if ((m = t.match(/\b(parking|aparcamiento|aparcar|peaje|alquiler|alquile|ayudante|peon|guagua|taxi|ferry|barco|contenedor|escombros?|grua|herramienta)\b/))) {
+      return { que: 'gasto', importe: numero, cosa: resto.replace(/^\s*(de|del|en|el|la|un|una|pague|pagué|gaste|gasté)\s+/i, '').trim() || m[1] };
+    }
     if ((m = t.match(new RegExp(NUM + '\\s*(km|kms|kilometros?)\\b')))) return { que: 'viaje', km: num(m[1]) };
     if (/\bmedia hora\b/.test(t)) return { que: 'horas', horas: 0.5 };
     if ((m = t.match(new RegExp(NUM + '\\s*(h|hs|hora|horas)\\b')))) return { que: 'horas', horas: num(m[1]) };
@@ -449,12 +509,14 @@
     if (/\b(ticket|tickets|factura|compre|compra|material)\b/.test(t)) return { que: 'ticket' };
     if (/\bhoras?\b/.test(t)) return { que: 'horas' };
     if ((m = t.match(new RegExp('^' + NUM + '$')))) return { que: 'numero', numero: num(m[1]) };
-    return null;
+    // No lo entiende: no se rinde, pregunta qué hacer con ello.
+    return { que: 'desconocido', texto: String(texto).trim(), numero: numero, resto: resto };
   }
 
   function hacer(intencion) {
-    if (!intencion) return decir('No te he entendido. ' + AYUDA);
     const q = intencion.que;
+    if (q === 'desconocido') { chat.datos = intencion; return irPaso('desconocido'); }
+    if (q === 'otra') { chat.datos = {}; return irPaso('otra'); }
     if (q === 'cancelar') { decir('Vale, lo dejamos. ¿Qué quieres apuntar?'); return alMenu(); }
     if (q === 'mes') {
       const m = resumenMes();
@@ -491,16 +553,35 @@
     const d = chat.datos;
     if (!trabajoDelChat()) return;
     if (d.que === 'terminar') { const id = d.id; alMenu(); return ir('cerrar', { id: id }); }
-    if (d.que === 'ticket') return d.importe != null ? (d.cosa ? guardarTicket(d.cosa) : irPaso('cosa')) : irPaso('importe');
+    if (d.que === 'nota') return d.cosa ? guardarNota(d.cosa) : irPaso('nota');
+    if (['ticket', 'gasto', 'adelanto'].includes(d.que)) return d.importe != null ? (d.cosa ? guardarDinero(d.cosa) : irPaso('cosa')) : irPaso('importe');
     if (d.que === 'horas') return d.horas != null ? guardarHoras(d.horas) : irPaso('horas');
     return d.km != null ? guardarViaje(d.km) : irPaso('km');
   }
 
-  function guardarTicket(cosa) {
+  function guardarDinero(cosa) {
     const t = trabajoDelChat(); if (!t) return;
-    const importe = chat.datos.importe;
-    cambiar('Ticket apuntado', () => apuntar(t, 'ticket', importe, cosa.trim()));
-    decir('Apuntado: ' + C.euros(importe) + (cosa.trim() ? ' de ' + cosa.trim() : '') + ' en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    const d = chat.datos;
+    const importe = d.importe;
+    cosa = cosa.trim();
+    if (d.que === 'adelanto') {
+      cambiar('Dinero del cliente apuntado', () => apuntar(t, 'adelanto', importe, cosa));
+      const c = C.calcular(t, datos.perfil, false);
+      decir('Apuntado: ' + t.cliente + ' te dio ' + C.euros(importe) + (cosa ? ' (' + cosa + ')' : '') + '. No cambia el precio justo (' + C.euros(c.justo) + '), pero ya solo te quedan por cobrar ' + C.euros(C.redondear(c.justo - c.adelantado)) + '. En el papel saldrá como ya pagado. ¿Algo más?');
+    } else if (d.que === 'gasto') {
+      cambiar('Gasto apuntado', () => apuntar(t, 'gasto', importe, cosa));
+      decir('Apuntado otro gasto: ' + (cosa || 'sin nombre') + ', ' + C.euros(importe) + '. Se le cobra al cliente tal cual. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    } else {
+      cambiar('Ticket apuntado', () => apuntar(t, 'ticket', importe, cosa));
+      decir('Apuntado: ' + C.euros(importe) + (cosa ? ' de ' + cosa : '') + ' en el trabajo de ' + t.cliente + '. Precio justo hasta ahora: ' + C.euros(C.calcular(t, datos.perfil, false).justo) + '. ¿Algo más?');
+    }
+    alMenu();
+  }
+
+  function guardarNota(texto) {
+    const t = trabajoDelChat(); if (!t) return;
+    cambiar('Nota guardada', () => apuntar(t, 'nota', 0, texto.trim()));
+    decir('Guardada la nota en el trabajo de ' + t.cliente + '. Solo la ves tú; no sale en el papel. ¿Algo más?');
     alMenu();
   }
 
@@ -522,7 +603,8 @@
   const MENU = [
     { texto: 'Un ticket', valor: 'ticket' }, { texto: 'Horas', valor: 'horas' },
     { texto: 'Un viaje', valor: 'viaje' }, { texto: 'Un trabajo nuevo', valor: 'nuevo' },
-    { texto: 'Terminar un trabajo', valor: 'terminar' }, { texto: 'Cómo voy este mes', valor: 'mes' }
+    { texto: 'Terminar un trabajo', valor: 'terminar' }, { texto: 'Cómo voy este mes', valor: 'mes' },
+    { texto: 'Otra cosa', valor: 'otra' }
   ];
 
   // Cada paso: la pregunta, los botones, y qué hacer si se pulsa (elegir) o se escribe (escrito).
@@ -553,22 +635,48 @@
       }
     },
     importe: {
-      pregunta: () => '¿Cuánto pone el ticket?', escribir: '30,50', numero: true,
+      pregunta: (d) => ({ adelanto: '¿Cuánto te dio el cliente?', gasto: '¿Cuánto te costó?' }[d.que] || '¿Cuánto pone el ticket?'), escribir: '30,50', numero: true,
       opciones: () => [CANCELAR],
       escrito: function (texto) {
         const i = entender(texto);
-        const n = i && i.que === 'ticket' && i.importe != null ? i.importe : C.leerNumero(texto);
+        const n = i && i.importe != null ? i.importe : C.leerNumero(texto);
         if (n == null || n === 0) return decir('No lo entiendo. Escribe solo el número, por ejemplo 30,50.');
         chat.datos.importe = n;
-        if (i && i.cosa) return guardarTicket(i.cosa);
+        if (i && i.que === chat.datos.que && i.cosa) return guardarDinero(i.cosa);
         irPaso('cosa');
       }
     },
     cosa: {
-      pregunta: () => '¿Qué es? Por ejemplo: grifo, tubos, pintura.', escribir: 'Grifo',
+      pregunta: (d) => ({ adelanto: '¿Para qué te lo dio? Por ejemplo: para el material.', gasto: '¿Qué fue? Por ejemplo: parking, peaje, alquiler.' }[d.que] || '¿Qué es? Por ejemplo: grifo, tubos, pintura.'),
+      escribir: 'Escríbelo aquí',
       opciones: () => [{ texto: 'Saltar', valor: '' }, CANCELAR],
-      elegir: () => guardarTicket(''),
-      escrito: (texto) => guardarTicket(texto)
+      elegir: () => guardarDinero(''),
+      escrito: (texto) => guardarDinero(texto)
+    },
+    nota: {
+      pregunta: () => '¿Qué quieres apuntar en la nota?', escribir: 'El cliente pone los azulejos',
+      opciones: () => [CANCELAR],
+      escrito: (texto) => guardarNota(texto)
+    },
+    otra: {
+      pregunta: () => '¿Qué ha pasado?',
+      opciones: () => [{ texto: 'El cliente me dio dinero', valor: 'adelanto' }, { texto: 'Otro gasto (parking, peaje…)', valor: 'gasto' },
+        { texto: 'Apuntar una nota', valor: 'nota' }, CANCELAR],
+      elegir: (v) => hacer({ que: v })
+    },
+    desconocido: {
+      pregunta: (d) => 'No sé qué es «' + d.texto + '». ¿Qué hago con ello?',
+      opciones: (d) => [
+        { texto: 'Guardarlo como nota', valor: 'nota' },
+        { texto: 'Es dinero que me dio el cliente' + (d.numero != null ? ' (' + C.euros(d.numero) + ')' : ''), valor: 'adelanto' },
+        { texto: 'Es material (un ticket)' + (d.numero != null ? ' (' + C.euros(d.numero) + ')' : ''), valor: 'ticket' },
+        { texto: 'Es otro gasto mío' + (d.numero != null ? ' (' + C.euros(d.numero) + ')' : ''), valor: 'gasto' },
+        CANCELAR],
+      elegir: (v) => {
+        const d = chat.datos;
+        if (v === 'nota') return hacer({ que: 'nota', cosa: d.texto });
+        hacer({ que: v, importe: d.numero != null ? d.numero : undefined, cosa: d.numero != null ? d.resto : '' });
+      }
     },
     horas: {
       pregunta: () => '¿Cuántas horas has trabajado?', escribir: 'Otra cantidad', numero: true,
@@ -726,7 +834,7 @@
     const t = buscarTrabajo(vista.id);
     const c = C.calcular(t, datos.perfil, vista.con_descuento);
     const n = C.leerNumero(e.target.value);
-    document.getElementById('comparar').innerHTML = n ? textoPorHora(c, n, 'Cobrando lo que pensabas') : '';
+    document.getElementById('comparar').innerHTML = n ? textoPorHora(c, n, 'Cobrando lo que pensabas') + textoAdelanto(c, n) : '';
     const b = document.getElementById('cobrar-pensaba');
     b.hidden = !n;
     if (n) b.textContent = 'Cobrar lo que pensaba: ' + C.euros(n);
@@ -762,6 +870,18 @@
       const n = C.leerNumero(f.importe);
       if (!n) return avisar('Escribe solo el número del ticket, por ejemplo 30,50', false);
       cambiar('Ticket apuntado', () => apuntar(buscarTrabajo(vista.id), 'ticket', n, (f.cosa || '').trim()));
+      vista.formulario = null;
+      return pintar();
+    }
+    if (tipo === 'adelanto' || tipo === 'gasto') {
+      const n = C.leerNumero(f.importe);
+      if (!n) return avisar('Escribe solo el número, por ejemplo 50', false);
+      cambiar(tipo === 'adelanto' ? 'Dinero del cliente apuntado' : 'Gasto apuntado', () => apuntar(buscarTrabajo(vista.id), tipo, n, (f.cosa || '').trim()));
+      vista.formulario = null;
+      return pintar();
+    }
+    if (tipo === 'nota') {
+      cambiar('Nota guardada', () => apuntar(buscarTrabajo(vista.id), 'nota', 0, f.nota.trim()));
       vista.formulario = null;
       return pintar();
     }

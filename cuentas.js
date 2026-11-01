@@ -1,5 +1,7 @@
 // Las cuentas de un trabajo: las mismas que usaba el bot de Telegram (Cuentas.gs).
-//   precio justo = material + gestión del material + horas × €/hora + viajes × €/viaje
+//   precio justo = material + gestión del material + otros gastos + horas × €/hora + viajes × €/viaje
+//   otros gastos (parking, peaje, alquiler, un ayudante…) se cobran tal cual, sin gestión
+//   queda por cobrar = lo que cobras − lo que el cliente ya te dio (adelantos)
 //   total        = precio justo − descuento de cliente de siempre (si lo tiene)
 //   gasolina de un viaje = km de ida y vuelta × consumo (litros cada 100 km) ÷ 100 × precio del litro
 //   lo que de verdad te queda por hora = (lo que cobras − material − gasolina) ÷ horas
@@ -63,10 +65,14 @@
     const a = Object.assign({}, POR_DEFECTO, ajustes || {});
     const apuntes = trabajo.apuntes || [];
     const tickets = apuntes.filter((x) => x.tipo === 'ticket');
+    const otros = apuntes.filter((x) => x.tipo === 'gasto');
+    const adelantos = apuntes.filter((x) => x.tipo === 'adelanto');
     const viajes = apuntes.filter((x) => x.tipo === 'viaje');
     return {
-      tickets: tickets,
+      tickets: tickets, otros: otros, adelantos: adelantos,
       material: redondear(tickets.reduce((s, x) => s + Number(x.cantidad), 0)),
+      otros_gastos: redondear(otros.reduce((s, x) => s + Number(x.cantidad), 0)),
+      adelantado: redondear(adelantos.reduce((s, x) => s + Number(x.cantidad), 0)),
       horas: redondear(apuntes.filter((x) => x.tipo === 'horas').reduce((s, x) => s + Number(x.cantidad), 0)),
       viajes: viajes.reduce((s, x) => s + Number(x.cantidad), 0),
       km: redondear(viajes.reduce((s, x) => s + (x.km != null ? Number(x.km) : 0), 0)),
@@ -81,12 +87,13 @@
     const gestion = redondear(r.material * a.margen);
     const manoObra = redondear(r.horas * a.precio_hora);
     const desplazamiento = redondear(r.viajes * a.precio_viaje);
-    const justo = redondear(r.material + gestion + manoObra + desplazamiento);
+    const justo = redondear(r.material + gestion + r.otros_gastos + manoObra + desplazamiento);
     const descuento = conDescuento ? redondear(justo * a.descuento_fiel) : 0;
     const total = redondear(justo - descuento);
-    const gastosReales = redondear(r.material + r.gasolina);
+    const gastosReales = redondear(r.material + r.otros_gastos + r.gasolina);
     return {
-      material: r.material, gestion: gestion, mano_obra: manoObra, desplazamiento: desplazamiento,
+      material: r.material, gestion: gestion, otros_gastos: r.otros_gastos, otros: r.otros, adelantado: r.adelantado, adelantos: r.adelantos,
+      mano_obra: manoObra, desplazamiento: desplazamiento,
       justo: justo, descuento: descuento, total: total, gastos_reales: gastosReales,
       horas: r.horas, viajes: r.viajes, km: r.km, gasolina: r.gasolina, tickets: r.tickets, precio_hora: a.precio_hora
     };
