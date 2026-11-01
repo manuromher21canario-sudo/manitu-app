@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manitu</title>
+  <meta name="theme-color" content="#2e7d4f">
+  <link rel="icon" href="iconos/manitu-icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="iconos/manitu-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <!-- Aquí app.js dibuja la pantalla que toque -->
+  <main id="app"></main>
+  <!-- Aviso de abajo, con su botón de Deshacer -->
+  <div id="aviso" hidden></div>
+  <nav id="menu" hidden>
+    <button data-accion="ir" data-valor="inicio">Inicio</button>
+    <button data-accion="ir" data-valor="trabajos">Trabajos</button>
+    <button data-accion="ir" data-valor="ayudante">Ayudante</button>
+    <button data-accion="ir" data-valor="ajustes">Ajustes</button>
+  </nav>
+  <script src="cuentas.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

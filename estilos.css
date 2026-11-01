@@ -1,0 +1,123 @@
+/* Manitu: sobrio, verde de la marca (#2e7d4f), pensado para el móvil. */
+:root {
+  --verde: #2e7d4f;
+  --verde-oscuro: #22603c;
+  --verde-claro: #e6f1ea;
+  --texto: #1d2320;
+  --suave: #5c6660;
+  --fondo: #f6f7f5;
+  --blanco: #ffffff;
+  --borde: #dfe3df;
+  --rojo: #a4372a;
+  --rojo-claro: #f8e9e6;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+}
+main { max-width: 480px; margin: 0 auto; padding: 16px 16px 140px; }
+
+h1 { font-size: 22px; margin: 4px 0 2px; }
+h2 { font-size: 17px; margin: 24px 0 8px; }
+p { margin: 6px 0; }
+.suave { color: var(--suave); font-size: 14px; }
+
+.cabecera { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.cabecera img { width: 36px; height: 36px; }
+.cabecera .nombre { font-weight: 600; }
+
+.caja {
+  background: var(--blanco);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 10px 0;
+}
+.cifra { font-size: 28px; font-weight: 700; }
+
+/* Avisos dentro de la pantalla */
+.ojo { background: var(--rojo-claro); color: var(--rojo); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
+.bien { background: var(--verde-claro); color: var(--verde-oscuro); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 15px; }
+
+/* Botones */
+button { font: inherit; cursor: pointer; }
+.boton {
+  display: block; width: 100%;
+  padding: 12px; margin: 8px 0;
+  border-radius: 8px; border: 1px solid var(--verde);
+  background: var(--blanco); color: var(--verde); font-weight: 600;
+}
+.boton.principal { background: var(--verde); color: var(--blanco); }
+.boton.peligro { border-color: var(--rojo); color: var(--rojo); }
+.fila { display: flex; gap: 8px; }
+.fila > * { flex: 1; }
+.enlace { background: none; border: none; color: var(--verde); padding: 4px 0; text-decoration: underline; }
+.enlace.rojo { color: var(--rojo); }
+
+/* Listas de trabajos y apuntes */
+.lista { list-style: none; padding: 0; margin: 0; }
+.lista li {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 12px 0; border-bottom: 1px solid var(--borde);
+}
+.lista li:last-child { border-bottom: none; }
+.lista button.trabajo { all: unset; cursor: pointer; flex: 1; }
+.derecha { text-align: right; white-space: nowrap; }
+
+/* Formularios */
+label { display: block; font-weight: 600; margin: 14px 0 4px; }
+input, select {
+  width: 100%; padding: 11px; font: inherit;
+  border: 1px solid var(--borde); border-radius: 8px; background: var(--blanco); color: var(--texto);
+}
+input:focus, select:focus { outline: 2px solid var(--verde); border-color: var(--verde); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-weight: normal; }
+.check input { width: auto; margin-top: 4px; }
+
+/* Tabla de las cuentas */
+.cuentas { width: 100%; border-collapse: collapse; }
+.cuentas td { padding: 7px 0; border-bottom: 1px solid var(--borde); }
+.cuentas td:last-child { text-align: right; white-space: nowrap; }
+.cuentas tr.total td { font-weight: 700; font-size: 18px; border-bottom: none; }
+
+/* Ayudante (el chat) */
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.burbuja { max-width: 85%; padding: 10px 12px; border-radius: 10px; }
+.burbuja.bot { background: var(--blanco); border: 1px solid var(--borde); align-self: flex-start; }
+.burbuja.yo { background: var(--verde); color: var(--blanco); align-self: flex-end; }
+.opciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.opciones .boton { width: auto; flex: 1 1 40%; margin: 0; }
+
+/* Menú de abajo */
+#menu {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  display: flex; background: var(--blanco); border-top: 1px solid var(--borde);
+}
+#menu button { flex: 1; padding: 14px 4px; border: none; background: none; color: var(--suave); font-size: 15px; }
+#menu button.activo { color: var(--verde); font-weight: 700; }
+
+/* Aviso de abajo con Deshacer */
+#aviso {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px;
+  width: calc(100% - 32px); max-width: 448px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  background: var(--texto); color: var(--blanco); border-radius: 8px; padding: 12px 14px;
+}
+#aviso button { background: none; border: none; color: #9fd6b3; font-weight: 700; }
+
+/* El papel para el cliente */
+.papel { background: var(--blanco); border: 1px solid var(--borde); padding: 24px; }
+.papel .membrete { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.papel .membrete img { width: 44px; height: 44px; }
+.papel .pie { margin-top: 24px; font-size: 13px; color: var(--suave); }
+
+@media print {
+  body { background: var(--blanco); }
+  #menu, #aviso, .no-imprimir { display: none !important; }
+  main { padding: 0; max-width: none; }
+  .papel { border: none; padding: 0; }
+}
